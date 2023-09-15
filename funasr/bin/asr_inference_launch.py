@@ -236,6 +236,7 @@ def inference_paraformer(
         timestamp_infer_config: Union[Path, str] = None,
         timestamp_model_file: Union[Path, str] = None,
         param_dict: dict = None,
+        decoding_ind: int = 0,
         **kwargs,
 ):
     ncpu = kwargs.get("ncpu", 1)
@@ -290,6 +291,7 @@ def inference_paraformer(
         nbest=nbest,
         hotword_list_or_file=hotword_list_or_file,
         clas_scale=clas_scale,
+        decoding_ind=decoding_ind,
     )
 
     speech2text = Speech2TextParaformer(**speech2text_kwargs)
@@ -312,6 +314,7 @@ def inference_paraformer(
             **kwargs,
     ):
 
+        decoding_ind = None
         hotword_list_or_file = None
         if param_dict is not None:
             hotword_list_or_file = param_dict.get('hotword')
@@ -319,6 +322,8 @@ def inference_paraformer(
             hotword_list_or_file = kwargs['hotword']
         if hotword_list_or_file is not None or 'hotword' in kwargs:
             speech2text.hotword_list = speech2text.generate_hotwords_list(hotword_list_or_file)
+        if param_dict is not None and "decoding_ind" in param_dict:
+            decoding_ind = param_dict["decoding_ind"]
 
         # 3. Build data-iterator
         if data_path_and_name_and_type is None and raw_inputs is not None:
@@ -365,6 +370,7 @@ def inference_paraformer(
             # N-best list of (text, token, token_int, hyp_object)
 
             time_beg = time.time()
+            batch["decoding_ind"] = decoding_ind
             results = speech2text(**batch)
             if len(results) < 1:
                 hyp = Hypothesis(score=0.0, scores={}, states={}, yseq=[])
@@ -409,7 +415,7 @@ def inference_paraformer(
                         ibest_writer["rtf"][key] = rtf_cur
 
                     if text is not None:
-                        if use_timestamp and timestamp is not None:
+                        if use_timestamp and timestamp is not None and len(timestamp):
                             postprocessed_result = postprocess_utils.sentence_postprocess(token, timestamp)
                         else:
                             postprocessed_result = postprocess_utils.sentence_postprocess(token)
@@ -686,7 +692,7 @@ def inference_paraformer_vad_punc(
             text, token, token_int = result[0], result[1], result[2]
             time_stamp = result[4] if len(result[4]) > 0 else None
 
-            if use_timestamp and time_stamp is not None:
+            if use_timestamp and time_stamp is not None and len(time_stamp):
                 postprocessed_result = postprocess_utils.sentence_postprocess(token, time_stamp)
             else:
                 postprocessed_result = postprocess_utils.sentence_postprocess(token)
@@ -1289,7 +1295,8 @@ def inference_transducer(
         quantize_modules: Optional[List[str]] = None,
         quantize_dtype: Optional[str] = "float16",
         streaming: Optional[bool] = False,
-        simu_streaming: Optional[bool] = False,
+        fake_streaming: Optional[bool] = False,
+        full_utt: Optional[bool] = False,
         chunk_size: Optional[int] = 16,
         left_context: Optional[int] = 16,
         right_context: Optional[int] = 0,
@@ -1365,7 +1372,8 @@ def inference_transducer(
         quantize_modules=quantize_modules,
         quantize_dtype=quantize_dtype,
         streaming=streaming,
-        simu_streaming=simu_streaming,
+        fake_streaming=fake_streaming,
+        full_utt=full_utt,
         chunk_size=chunk_size,
         left_context=left_context,
         right_context=right_context,
@@ -1416,14 +1424,16 @@ def inference_transducer(
                         _end = (i + 1) * speech2text._ctx
 
                         speech2text.streaming_decode(
-                            speech[i * speech2text._ctx: _end], is_final=False
+                            speech[i * speech2text._ctx: _end + speech2text._right_ctx], is_final=False
                         )
 
                     final_hyps = speech2text.streaming_decode(
                         speech[_end: len(speech)], is_final=True
                     )
-                elif speech2text.simu_streaming:
-                    final_hyps = speech2text.simu_streaming_decode(**batch)
+                elif speech2text.fake_streaming:
+                    final_hyps = speech2text.fake_streaming_decode(**batch)
+                elif speech2text.full_utt:
+                    final_hyps = speech2text.full_utt_decode(**batch)
                 else:
                     final_hyps = speech2text(**batch)
 
@@ -1811,7 +1821,8 @@ def get_parser():
     group.add_argument("--lm_weight", type=float, default=1.0, help="RNNLM weight")
     group.add_argument("--ngram_weight", type=float, default=0.9, help="ngram weight")
     group.add_argument("--streaming", type=str2bool, default=False)
-    group.add_argument("--simu_streaming", type=str2bool, default=False)
+    group.add_argument("--fake_streaming", type=str2bool, default=False)
+    group.add_argument("--full_utt", type=str2bool, default=False)
     group.add_argument("--chunk_size", type=int, default=16)
     group.add_argument("--left_context", type=int, default=16)
     group.add_argument("--right_context", type=int, default=0)

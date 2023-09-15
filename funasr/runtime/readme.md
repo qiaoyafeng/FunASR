@@ -1,15 +1,38 @@
-# FunASR runtime-SDK
+# FunASR Runtime Roadmap
 中文文档（[点击此处](./readme_cn.md)）
 
 FunASR is a speech recognition framework developed by the Speech Lab of DAMO Academy, which integrates industrial-level models in the fields of speech endpoint detection, speech recognition, punctuation segmentation, and more. 
 It has attracted many developers to participate in experiencing and developing. To solve the last mile of industrial landing and integrate models into business, we have developed the FunASR runtime-SDK. The SDK supports several service deployments, including:
 
 - File transcription service, Mandarin, CPU version, done
+- The real-time transcription service, Mandarin (CPU), done
 - File transcription service, Mandarin, GPU version, in progress
 - File transcription service, English, in progress
-- Streaming speech recognition service, is in progress
 - and more.
 
+## The real-time transcription service, Mandarin (CPU)
+
+The FunASR real-time speech-to-text service software package not only performs real-time speech-to-text conversion, but also allows high-precision transcription text correction at the end of each sentence and outputs text with punctuation, supporting high-concurrency multiple requests.
+In order to meet the needs of different users for different scenarios, different tutorials are prepared:
+
+### Convenient Deployment Tutorial
+
+This is suitable for scenarios where there is no need to modify the service deployment SDK and the deployed model comes from ModelScope or is finetuned by the user. For detailed tutorials, please refer to [docs](./docs/SDK_tutorial_online.md)
+
+
+### Development Guide
+
+This is suitable for scenarios where there is a need to modify the service deployment SDK and the deployed model comes from ModelScope or is finetuned by the user. For detailed documentation, please refer to [docs](./docs/SDK_advanced_guide_online.md)
+
+### Technology Principles Revealed
+
+The document introduces the technology principles behind the service, recognition accuracy, computing efficiency, and core advantages: convenience, high precision, high efficiency, and long audio chain. For detailed documentation, please refer to [docs](https://mp.weixin.qq.com/s/8He081-FM-9IEI4D-lxZ9w).
+
+### latest version & image ID
+
+| image version                |  image ID | INFO |
+|------------------------------|-----|------|
+| funasr-runtime-sdk-cpu-0.2.1 |  1ad3d19e0707   |      |
 
 ## File Transcription Service, Mandarin (CPU)
 
@@ -28,3 +51,8 @@ The documentation mainly targets novice users who have no need for modifications
 ### Advanced Development Guide
 
 The documentation mainly targets advanced developers who require modifications and customization of the service. It supports downloading model deployments from modelscope and also supports deploying models that users have fine-tuned. For detailed information, please refer to the documentation available by [docs](./docs/SDK_advanced_guide_offline.md)
+
+### latest version & image ID
+|  image version   |  image ID | INFO |
+|-----|-----|------|
+|   funasr-runtime-sdk-online-cpu-0.1.1  |  bdbdd0b27dee   |      |

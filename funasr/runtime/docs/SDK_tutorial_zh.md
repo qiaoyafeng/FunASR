@@ -1,9 +1,12 @@
 (简体中文|[English](./SDK_tutorial.md))
 
-# FunASR离线文件转写服务便捷部署教程
 
+# FunASR离线文件转写服务便捷部署教程
 FunASR提供可便捷本地或者云端服务器部署的离线文件转写服务，内核为FunASR已开源runtime-SDK。
 集成了达摩院语音实验室在Modelscope社区开源的语音端点检测(VAD)、Paraformer-large语音识别(ASR)、标点恢复(PUNC) 等相关能力，拥有完整的语音识别链路，可以将几十个小时的音频或视频识别成带标点的文字，而且支持上百路请求同时进行转写。
+
+# 发布日志
+**FunASR离线文件转写服务已升级至2.0,集成ffmpeg支持多种音视频输入、支持热词模型、支持时间戳模型，欢迎部署体验[快速上手](#快速上手)**
 
 ## 服务器配置
 
@@ -32,8 +35,9 @@ curl -O https://raw.githubusercontent.com/alibaba-damo-academy/FunASR/main/funas
 
 执行部署工具，在提示处输入回车键即可完成服务端安装与部署。目前便捷部署工具暂时仅支持Linux环境，其他环境部署参考开发指南（[点击此处](./SDK_advanced_guide_offline_zh.md)）
 ```shell
-sudo bash funasr-runtime-deploy-offline-cpu-zh.sh install --workspace /root/funasr-runtime-resources
+sudo bash funasr-runtime-deploy-offline-cpu-zh.sh install --workspace ./funasr-runtime-resources
 ```
+**注：如果需要部署时间戳模型或者热词模型，在安装部署步骤2时选择对应模型，其中1为paraformer-large模型，2为paraformer-large 时间戳模型，3为paraformer-large 热词模型**
 
 ### 客户端测试与使用
 
@@ -54,7 +58,7 @@ python3 funasr_wss_client.py --host "127.0.0.1" --port 10095 --mode offline --au
 - [html](#html-client)
 - [java](#java-client)
 
-更多版本客户端支持请参考[开发指南](./SDK_advanced_guide_offline_zh.md)
+更多版本客户端支持请参考[websocket/grpc协议](./websocket_protocol_zh.md)
 
 ### python-client
 若想直接运行client进行测试，可参考如下简易说明，以python版本为例：
@@ -71,6 +75,7 @@ python3 funasr_wss_client.py --host "127.0.0.1" --port 10095 --mode offline --au
 --audio_in 需要进行转写的音频文件，支持文件路径，文件列表wav.scp
 --thread_num 设置并发发送线程数，默认为1
 --ssl 设置是否开启ssl证书校验，默认1开启，设置为0关闭
+--hotword 如果模型为热词模型，可以设置热词: *.txt(每行一个热词) 或者空格分隔的热词字符串 (could be: 阿里巴巴 达摩院)
 ```
 
 ### cpp-client
@@ -87,6 +92,7 @@ python3 funasr_wss_client.py --host "127.0.0.1" --port 10095 --mode offline --au
 --wav-path 需要进行转写的音频文件，支持文件路径
 --thread_num 设置并发发送线程数，默认为1
 --ssl 设置是否开启ssl证书校验，默认1开启，设置为0关闭
+--hotword 如果模型为热词模型，可以设置热词: *.txt(每行一个热词) 或者空格分隔的热词字符串 (could be: 阿里巴巴 达摩院)
 ```
 
 ### html-client
@@ -157,39 +163,13 @@ sudo bash funasr-runtime-deploy-offline-cpu-zh.sh update --decode_thread_num 32
 sudo bash funasr-runtime-deploy-offline-cpu-zh.sh update --workspace /root/funasr-runtime-resources
 ```
 
+### 关闭SSL证书
 
-## 服务端启动过程配置详解
-
-### 选择FunASR Docker镜像
-推荐选择1)使用我们的最新发布版镜像，也可选择历史版本。
-```text
-[1/5]
-  Getting the list of docker images, please wait a few seconds.
-    [DONE]
-
-  Please choose the Docker image.
-    1) registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu-0.1.0
-  Enter your choice, default(1):
-  You have chosen the Docker image: registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu-0.1.0
-```
-
-
-### 设置宿主机提供给FunASR的端口
-设置提供给Docker的宿主机端口，默认为10095。请保证此端口可用。
-```text
-[2/5]
-  Please input the opened port in the host used for FunASR server.
-  Setting the opened host port [1-65535], default(10095):
-  The port of the host is 10095
-  The port in Docker for FunASR server is 10095
-```
-
-### 设置SSL
-
-默认开启SSL校验，如果需要关闭，可以在启动时设置
 ```shell
-sudo bash funasr-runtime-deploy-offline-cpu-zh.sh --ssl 0
+sudo bash funasr-runtime-deploy-online-cpu-zh.sh update --ssl 0
 ```
+
+
 
 ## 联系我们
 

@@ -1,6 +1,9 @@
 ([简体中文](./SDK_tutorial_zh.md)|English)
 
-# FunASR Offline File Transcription Service Convenient Deployment Tutorial
+# Highlights
+**FunASR offline file transcription service has been upgraded to version 2.0, which integrates ffmpeg to support various audio and video inputs. It also supports custom hotword models and timestamp models. Feel free to deploy and experience it!**
+
+# FunASR Offline File Transcription Service
 
 FunASR provides an offline file transcription service that can be easily deployed on a local or cloud server. The core is the FunASR open-source runtime-SDK. It integrates various capabilities such as speech endpoint detection (VAD) and Paraformer-large speech recognition (ASR) and punctuation restoration (PUNC) released by the speech laboratory of the Damo Academy in the Modelscope community. It has a complete speech recognition chain and can recognize audio or video of tens of hours into punctuated text. Moreover, it supports transcription for hundreds of simultaneous requests.
 
@@ -33,6 +36,7 @@ Execute the deployment tool and press the Enter key at the prompt to complete th
 ```shell
 sudo bash funasr-runtime-deploy-offline-cpu-zh.sh install --workspace /root/funasr-runtime-resources
 ```
+Note: If you need to deploy the timestamp model or hotword model, select the corresponding model in step 2 of the installation and deployment process, where 1 is the paraformer-large model, 2 is the paraformer-large timestamp model, and 3 is the paraformer-large hotword model.
 
 ### Client Testing and Usage
 
@@ -69,6 +73,7 @@ Command parameter instructions:
 --audio_in is the audio file that needs to be transcribed, supporting file paths and file list wav.scp
 --thread_num sets the number of concurrent sending threads, default is 1
 --ssl sets whether to enable SSL certificate verification, default is 1 to enable, and 0 to disable
+--hotword If am is hotword model, setting hotword: *.txt(one hotword perline) or hotwords seperate by space (could be: 阿里巴巴 达摩院)
 ```
 
 ### cpp-client
@@ -85,6 +90,7 @@ Command parameter description:
 --wav-path specifies the audio file to be transcribed, and supports file paths.
 --thread_num sets the number of concurrent send threads, with a default value of 1.
 --ssl sets whether to enable SSL certificate verification, with a default value of 1 for enabling and 0 for disabling.
+--hotword If am is hotword model, setting hotword: *.txt(one hotword perline) or hotwords seperate by space (could be: 阿里巴巴 达摩院)
 ```
 
 ### html-client
@@ -155,41 +161,14 @@ sudo bash funasr-runtime-deploy-offline-cpu-zh.sh update --decode_thread_num 32
 sudo bash funasr-runtime-deploy-offline-cpu-zh.sh update --workspace /root/funasr-runtime-resources
 ```
 
-
-## Detailed Configuration of Server Startup Process
-
-### Select FunASR Docker image
-We recommend choosing to use our latest released image, but you can also choose historical versions.
-
-```text
-[1/5]
-  Getting the list of docker images, please wait a few seconds.
-    [DONE]
-
-  Please choose the Docker image.
-    1) registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu-0.1.0
-  Enter your choice, default(1):
-  You have chosen the Docker image: registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu-0.1.0
-```
-
-
-### Set the port provided by the host for FunASR
-Set the host port provided to Docker, which is 10095 by default. Please make sure that this port is available.
-
-```text
-[2/5]
-  Please input the opened port in the host used for FunASR server.
-  Setting the opened host port [1-65535], default(10095):
-  The port of the host is 10095
-  The port in Docker for FunASR server is 10095
-```
-
 ### Set SSL
 
 SSL verification is enabled by default. If you need to disable it, you can set it when starting.
 ```shell
-sudo bash funasr-runtime-deploy-offline-cpu-zh.sh --ssl 0
+sudo bash funasr-runtime-deploy-online-cpu-zh.sh update --ssl 0
 ```
+
+
 
 ## Contact Us
 
