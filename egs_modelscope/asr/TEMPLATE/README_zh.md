@@ -21,21 +21,49 @@ inference_pipeline = pipeline(
 rec_result = inference_pipeline(audio_in='https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav')
 print(rec_result)
 ```
+#### [Paraformer长音频模型](https://www.modelscope.cn/models/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch/summary)
+```python
+from modelscope.pipelines import pipeline
+from modelscope.utils.constant import Tasks
+
+inference_pipeline = pipeline(
+    task=Tasks.auto_speech_recognition,
+    model='damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch',
+    vad_model='damo/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+    punc_model='damo/punc_ct-transformer_cn-en-common-vocab471067-large',
+)
+
+rec_result = inference_pipeline(audio_in='./vad_example.wav')
+print(rec_result)
+```
+其中： 
+- `batch_size_token` 表示采用动态batch，batch中总token数为 `batch_size_token`，1 token = 60 ms. 
+- `batch_size_token_threshold_s`: 表示音频时长超过 `batch_size_token_threshold_s`阈值是，batch数设置为1, 单位为s.
+- `max_single_segment_time`: 表示VAD最大切割音频时长, 单位是ms.
+
+建议：当您输入为长音频，遇到OOM问题时，因为显存占用与音频时长呈平方关系增加，分为3种情况：
+- a)推理起始阶段，显存主要取决于`batch_size_token`，适当减小该值，可以减少显存占用；
+- b)推理中间阶段，遇到VAD切割的长音频片段，总token数小于`batch_size_token`，仍然出现OOM，可以适当减小`batch_size_token_threshold_s`，超过阈值，强制batch为1; 
+- c)推理快结束阶段，遇到VAD切割的长音频片段，总token数小于`batch_size_token`，且超过阈值`batch_size_token_threshold_s`，强制batch为1，仍然出现OOM，可以适当减小`max_single_segment_time`，使得VAD切割音频时长变短。
+
 #### [Paraformer-实时模型](https://www.modelscope.cn/models/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online/summary)
 ##### 实时推理
 ```python
 inference_pipeline = pipeline(
     task=Tasks.auto_speech_recognition,
     model='damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online',
-    model_revision='v1.0.6',
+    model_revision='v1.0.7',
     update_model=False,
     mode='paraformer_streaming'
     )
 import soundfile
 speech, sample_rate = soundfile.read("example/asr_example.wav")
 
-chunk_size = [5, 10, 5] #[5, 10, 5] 600ms, [8, 8, 4] 480ms
-param_dict = {"cache": dict(), "is_final": False, "chunk_size": chunk_size}
+chunk_size = [0, 10, 5] #[0, 10, 5] 600ms, [0, 8, 4] 480ms
+encoder_chunk_look_back = 4 #number of chunks to lookback for encoder self-attention
+decoder_chunk_look_back = 1 #number of encoder chunks to lookback for decoder cross-attention
+param_dict = {"cache": dict(), "is_final": False, "chunk_size": chunk_size,
+              "encoder_chunk_look_back": encoder_chunk_look_back, "decoder_chunk_look_back": decoder_chunk_look_back}
 chunk_stride = chunk_size[1] * 960 # 600ms、480ms
 # first chunk, 600ms
 speech_chunk = speech[0:chunk_stride]
@@ -55,7 +83,7 @@ from modelscope.utils.constant import Tasks
 inference_pipeline = pipeline(
     task=Tasks.auto_speech_recognition,
     model='damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online',
-    model_revision='v1.0.6',
+    model_revision='v1.0.7',
     update_model=False,
     mode="paraformer_fake_streaming"
 )
@@ -64,6 +92,23 @@ rec_result = inference_pipeline(audio_in=audio_in)
 print(rec_result)
 ```
 演示代码完整版本，请参考[demo](https://github.com/alibaba-damo-academy/FunASR/discussions/241)
+
+#### [Paraformer-contextual 热词模型](https://www.modelscope.cn/models/damo/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404/summary)
+```python
+from modelscope.pipelines import pipeline
+from modelscope.utils.constant import Tasks
+
+param_dict = dict()
+# param_dict['hotword'] = "https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/hotword.txt"
+param_dict['hotword']="邓郁松 王颖春 王晔君"
+inference_pipeline = pipeline(
+    task=Tasks.auto_speech_recognition,
+    model="damo/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404",
+    param_dict=param_dict)
+
+rec_result = inference_pipeline(audio_in='https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_hotword.wav')
+print(rec_result)
+```
 
 #### [UniASR 模型](https://www.modelscope.cn/models/damo/speech_UniASR_asr_2pass-zh-cn-8k-common-vocab3445-pytorch-online/summary)
 UniASR 模型有三种解码模式(fast、normal、offline)，更多模型细节请参考[文档](https://www.modelscope.cn/models/damo/speech_UniASR_asr_2pass-zh-cn-8k-common-vocab3445-pytorch-online/summary)
@@ -79,6 +124,29 @@ print(rec_result)
 ```
 fast 和 normal 的解码模式是假流式解码，可用于评估识别准确性。
 演示的完整代码，请参见 [demo](https://github.com/alibaba-damo-academy/FunASR/discussions/151)
+
+#### [Paraformer-Spk model](https://modelscope.cn/models/damo/speech_paraformer-large-vad-punc-spk_asr_nat-zh-cn/summary)
+返回识别结果的同时返回每个子句的说话人分类结果。关于说话人日志模型的详情请见[CAM++](https://modelscope.cn/models/damo/speech_campplus_speaker-diarization_common/summary)。
+
+```python
+from modelscope.pipelines import pipeline
+from modelscope.utils.constant import Tasks
+
+if __name__ == '__main__':
+    audio_in = 'https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_speaker_demo.wav'
+    output_dir = "./results"
+    inference_pipeline = pipeline(
+        task=Tasks.auto_speech_recognition,
+        model='damo/speech_paraformer-large-vad-punc-spk_asr_nat-zh-cn',
+        model_revision='v0.0.2',
+        vad_model='damo/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+        punc_model='damo/punc_ct-transformer_cn-en-common-vocab471067-large',
+        output_dir=output_dir,
+    )
+    rec_result = inference_pipeline(audio_in=audio_in, batch_size_token=5000, batch_size_token_threshold_s=40, max_single_segment_time=6000)
+    print(rec_result)
+```
+
 
 #### [RNN-T-online 模型]()
 Undo

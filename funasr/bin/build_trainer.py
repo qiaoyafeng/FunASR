@@ -18,7 +18,7 @@ from funasr.build_utils.build_optimizer import build_optimizer
 from funasr.build_utils.build_scheduler import build_scheduler
 from funasr.build_utils.build_trainer import build_trainer as build_trainer_modelscope
 from funasr.modules.lora.utils import mark_only_lora_as_trainable
-from funasr.text.phoneme_tokenizer import g2p_choices
+from funasr.tokenizer.phoneme_tokenizer import g2p_choices
 from funasr.torch_utils.load_pretrained_model import load_pretrained_model
 from funasr.torch_utils.model_summary import model_summary
 from funasr.torch_utils.pytorch_version import pytorch_cudnn_version
@@ -548,6 +548,10 @@ def build_trainer(modelscope_dict,
     init_param = modelscope_dict['init_model']
     cmvn_file = modelscope_dict['cmvn_file']
     seg_dict_file = modelscope_dict['seg_dict']
+    if 'bpemodel' in modelscope_dict:
+        bpemodel = modelscope_dict['bpemodel']
+    else:
+        bpemodel = None
 
     # overwrite parameters
     with open(config) as f:
@@ -581,6 +585,10 @@ def build_trainer(modelscope_dict,
         args.seg_dict_file = seg_dict_file
     else:
         args.seg_dict_file = None
+    if bpemodel is not None and os.path.exists(bpemodel):
+        args.bpemodel = bpemodel
+    else:
+        args.bpemodel = None
     args.data_dir = data_dir
     args.train_set = train_set
     args.dev_set = dev_set
