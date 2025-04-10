@@ -11,7 +11,7 @@ CTTransformer::CTTransformer()
 {
 }
 
-void CTTransformer::InitPunc(const std::string &punc_model, const std::string &punc_config, int thread_num){
+void CTTransformer::InitPunc(const std::string &punc_model, const std::string &punc_config, const std::string &token_file, int thread_num){
     session_options.SetIntraOpNumThreads(thread_num);
     session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
     session_options.DisableCpuMemArena();
@@ -25,21 +25,10 @@ void CTTransformer::InitPunc(const std::string &punc_model, const std::string &p
         exit(-1);
     }
     // read inputnames outputnames
-    string strName;
-    GetInputName(m_session.get(), strName);
-    m_strInputNames.push_back(strName.c_str());
-    GetInputName(m_session.get(), strName, 1);
-    m_strInputNames.push_back(strName);
+    GetInputNames(m_session.get(), m_strInputNames, m_szInputNames);
+    GetOutputNames(m_session.get(), m_strOutputNames, m_szOutputNames);
     
-    GetOutputName(m_session.get(), strName);
-    m_strOutputNames.push_back(strName);
-
-    for (auto& item : m_strInputNames)
-        m_szInputNames.push_back(item.c_str());
-    for (auto& item : m_strOutputNames)
-        m_szOutputNames.push_back(item.c_str());
-
-	m_tokenizer.OpenYaml(punc_config.c_str());
+	m_tokenizer.OpenYaml(punc_config.c_str(), token_file.c_str());
     m_tokenizer.JiebaInit(punc_config);
 }
 

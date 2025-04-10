@@ -1,19 +1,18 @@
-﻿using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.ML;
+﻿using AliFsmnVadSharp.Model;
+using AliFsmnVadSharp.Utils;
+using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using Microsoft.Extensions.Logging;
-using AliFsmnVadSharp.Model;
-using AliFsmnVadSharp.Utils;
+
+// 模型文件下载地址：https://modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-onnx/
 
 namespace AliFsmnVadSharp
 {
-    public class AliFsmnVad
+    public class AliFsmnVad : IDisposable
     {
+        private bool _disposed;
         private InferenceSession _onnxSession;
-        private readonly ILogger<AliFsmnVad> _logger;
+        private readonly ILogger _logger;
         private string _frontend;
         private WavFrontend _wavFrontend;
         private int _batchSize = 1;
@@ -23,7 +22,7 @@ namespace AliFsmnVadSharp
 
         public AliFsmnVad(string modelFilePath, string configFilePath, string mvnFilePath, int batchSize = 1)
         {
-            Microsoft.ML.OnnxRuntime.SessionOptions options = new Microsoft.ML.OnnxRuntime.SessionOptions();
+            SessionOptions options = new SessionOptions();
             options.AppendExecutionProvider_CPU(0);
             options.InterOpNumThreads = 1;
             _onnxSession = new InferenceSession(modelFilePath, options);
@@ -31,9 +30,9 @@ namespace AliFsmnVadSharp
             VadYamlEntity vadYamlEntity = YamlHelper.ReadYaml<VadYamlEntity>(configFilePath);
             _wavFrontend = new WavFrontend(mvnFilePath, vadYamlEntity.frontend_conf);
             _frontend = vadYamlEntity.frontend;
-            _vad_post_conf = vadYamlEntity.vad_post_conf;
+            _vad_post_conf = vadYamlEntity.model_conf;
             _batchSize = batchSize;
-            _max_end_sil = _max_end_sil != int.MinValue ? _max_end_sil : vadYamlEntity.vad_post_conf.max_end_silence_time;
+            _max_end_sil = _max_end_sil != int.MinValue ? _max_end_sil : vadYamlEntity.model_conf.max_end_silence_time;
             _encoderConfEntity = vadYamlEntity.encoder_conf;
 
             ILoggerFactory loggerFactory = new LoggerFactory();
@@ -371,17 +370,41 @@ namespace AliFsmnVadSharp
             }
             return speech;
         }
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    if (_onnxSession != null)
+                    {
+                        _onnxSession.Dispose();
+                    }
+                    if (_wavFrontend != null)
+                    {
+                        _wavFrontend.Dispose();
+                    }
+                    if (_encoderConfEntity != null)
+                    {
+                        _encoderConfEntity = null;
+                    }
+                    if (_vad_post_conf != null)
+                    {
+                        _vad_post_conf = null;
+                    }
+                }
+                _disposed = true;
+            }
+        }
 
-
-
-
-
-
-
-
-
-
-
-
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+        ~AliFsmnVad()
+        {
+            Dispose(_disposed);
+        }
     }
 }

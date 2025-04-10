@@ -11,7 +11,7 @@ from typing import Optional
 from funasr.utils.cli_utils import get_commandline_args
 from funasr.tokenizer.build_tokenizer import build_tokenizer
 from funasr.tokenizer.cleaner import TextCleaner
-from funasr.tokenizer.phoneme_tokenizer import g2p_choices
+from funasr.tokenizer.phoneme_tokenizer import g2p_classes
 from funasr.utils.types import str2bool
 from funasr.utils.types import str_or_none
 
@@ -133,7 +133,7 @@ def tokenize(
 
     if not write_vocabulary:
         return
-    
+
     ## FIXME
     ## del duplicate add_symbols in counter
     for symbol_and_id in add_symbol:
@@ -197,12 +197,8 @@ def get_parser() -> argparse.ArgumentParser:
         help="The verbose level of logging",
     )
 
-    parser.add_argument(
-        "--input", "-i", required=True, help="Input text. - indicates sys.stdin"
-    )
-    parser.add_argument(
-        "--output", "-o", required=True, help="Output text. - indicates sys.stdout"
-    )
+    parser.add_argument("--input", "-i", required=True, help="Input text. - indicates sys.stdin")
+    parser.add_argument("--output", "-o", required=True, help="Output text. - indicates sys.stdout")
     parser.add_argument(
         "--field",
         "-f",
@@ -239,7 +235,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--g2p",
         type=str_or_none,
-        choices=g2p_choices,
+        choices=g2p_classes,
         default=None,
         help="Specify g2p method if --token_type=phn",
     )

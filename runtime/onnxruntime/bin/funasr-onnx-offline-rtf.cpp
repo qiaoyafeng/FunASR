@@ -29,7 +29,7 @@ using namespace std;
 std::atomic<int> wav_index(0);
 std::mutex mtx;
 
-void runReg(FUNASR_HANDLE asr_handle, vector<string> wav_list, vector<string> wav_ids,
+void runReg(FUNASR_HANDLE asr_handle, vector<string> wav_list, vector<string> wav_ids, int audio_fs,
             float* total_length, long* total_time, int core_id, float glob_beam = 3.0f, float lat_beam = 3.0f, float am_sc = 10.0f, 
             int fst_inc_wts = 20, string hotword_path = "") {
     
@@ -54,8 +54,7 @@ void runReg(FUNASR_HANDLE asr_handle, vector<string> wav_list, vector<string> wa
     // warm up
     for (size_t i = 0; i < 1; i++)
     {
-        FunOfflineReset(asr_handle, decoder_handle);
-        FUNASR_RESULT result=FunOfflineInfer(asr_handle, wav_list[0].c_str(), RASR_NONE, NULL, hotwords_embedding, 16000, false, decoder_handle);
+        FUNASR_RESULT result=FunOfflineInfer(asr_handle, wav_list[0].c_str(), RASR_NONE, nullptr, hotwords_embedding, audio_fs, true, decoder_handle);
         if(result){
             FunASRFreeResult(result);
         }
@@ -68,10 +67,10 @@ void runReg(FUNASR_HANDLE asr_handle, vector<string> wav_list, vector<string> wa
             break;
         }
 
-        gettimeofday(&start, NULL);
-        FUNASR_RESULT result=FunOfflineInfer(asr_handle, wav_list[i].c_str(), RASR_NONE, NULL, hotwords_embedding, 16000, false, decoder_handle);
+        gettimeofday(&start, nullptr);
+        FUNASR_RESULT result=FunOfflineInfer(asr_handle, wav_list[i].c_str(), RASR_NONE, nullptr, hotwords_embedding, audio_fs, true, decoder_handle);
 
-        gettimeofday(&end, NULL);
+        gettimeofday(&end, nullptr);
         seconds = (end.tv_sec - start.tv_sec);
         long taking_micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
         n_total_time += taking_micros;
@@ -82,6 +81,10 @@ void runReg(FUNASR_HANDLE asr_handle, vector<string> wav_list, vector<string> wa
             string stamp = FunASRGetStamp(result);
             if(stamp !=""){
                 LOG(INFO) << "Thread: " << this_thread::get_id() << "," << wav_ids[i] << " : " << stamp;
+            }
+            string stamp_sents = FunASRGetStampSents(result);
+            if(stamp_sents !=""){
+                LOG(INFO)<< wav_ids[i] <<" : "<<stamp_sents;
             }
             float snippet_time = FunASRGetRetSnippetTime(result);
             n_total_length += snippet_time;
@@ -112,10 +115,8 @@ bool is_target_file(const std::string& filename, const std::string target) {
 
 void GetValue(TCLAP::ValueArg<std::string>& value_arg, string key, std::map<std::string, std::string>& model_path)
 {
-    if (value_arg.isSet()){
-        model_path.insert({key, value_arg.getValue()});
-        LOG(INFO)<< key << " : " << value_arg.getValue();
-    }
+    model_path.insert({key, value_arg.getValue()});
+    LOG(INFO)<< key << " : " << value_arg.getValue();
 }
 
 int main(int argc, char *argv[])
@@ -126,6 +127,7 @@ int main(int argc, char *argv[])
     TCLAP::CmdLine cmd("funasr-onnx-offline-rtf", ' ', "1.0");
     TCLAP::ValueArg<std::string>    model_dir("", MODEL_DIR, "the model path, which contains model.onnx, config.yaml, am.mvn", true, "", "string");
     TCLAP::ValueArg<std::string>    quantize("", QUANTIZE, "true (Default), load the model of model.onnx in model_dir. If set true, load the model of model_quant.onnx in model_dir", false, "true", "string");
+    TCLAP::ValueArg<std::string>    bladedisc("", BLADEDISC, "true (Default), load the model of bladedisc in model_dir.", false, "true", "string");
     TCLAP::ValueArg<std::string>    vad_dir("", VAD_DIR, "the vad model path, which contains model.onnx, vad.yaml, vad.mvn", false, "", "string");
     TCLAP::ValueArg<std::string>    vad_quant("", VAD_QUANT, "true (Default), load the model of model.onnx in vad_dir. If set true, load the model of model_quant.onnx in vad_dir", false, "true", "string");
     TCLAP::ValueArg<std::string>    punc_dir("", PUNC_DIR, "the punc model path, which contains model.onnx, punc.yaml", false, "", "string");
@@ -138,11 +140,15 @@ int main(int argc, char *argv[])
     TCLAP::ValueArg<std::string>    itn_dir("", ITN_DIR, "the itn model(fst) path, which contains zh_itn_tagger.fst and zh_itn_verbalizer.fst", false, "", "string");
 
     TCLAP::ValueArg<std::string> wav_path("", WAV_PATH, "the input could be: wav_path, e.g.: asr_example.wav; pcm_path, e.g.: asr_example.pcm; wav.scp, kaldi style wav list (wav_id \t wav_path)", true, "", "string");
-    TCLAP::ValueArg<std::int32_t> thread_num("", THREAD_NUM, "multi-thread num for rtf", true, 0, "int32_t");
+    TCLAP::ValueArg<std::int32_t>   audio_fs("", AUDIO_FS, "the sample rate of audio", false, 16000, "int32_t");
+    TCLAP::ValueArg<std::int32_t> thread_num("", THREAD_NUM, "multi-thread num for rtf", false, 1, "int32_t");
     TCLAP::ValueArg<std::string>    hotword("", HOTWORD, "the hotword file, one hotword perline, Format: Hotword Weight (could be: 阿里巴巴 20)", false, "", "string");
+    TCLAP::SwitchArg use_gpu("", INFER_GPU, "Whether to use GPU for inference, default is false", false);
+    TCLAP::ValueArg<std::int32_t> batch_size("", BATCHSIZE, "batch_size for ASR model when using GPU", false, 4, "int32_t");
 
     cmd.add(model_dir);
     cmd.add(quantize);
+    cmd.add(bladedisc);
     cmd.add(vad_dir);
     cmd.add(vad_quant);
     cmd.add(punc_dir);
@@ -155,12 +161,16 @@ int main(int argc, char *argv[])
     cmd.add(hotword);
     cmd.add(fst_inc_wts);
     cmd.add(wav_path);
+    cmd.add(audio_fs);
     cmd.add(thread_num);
+    cmd.add(use_gpu);
+    cmd.add(batch_size);
     cmd.parse(argc, argv);
 
     std::map<std::string, std::string> model_path;
     GetValue(model_dir, MODEL_DIR, model_path);
     GetValue(quantize, QUANTIZE, model_path);
+    GetValue(bladedisc, BLADEDISC, model_path);
     GetValue(vad_dir, VAD_DIR, model_path);
     GetValue(vad_quant, VAD_QUANT, model_path);
     GetValue(punc_dir, PUNC_DIR, model_path);
@@ -171,8 +181,10 @@ int main(int argc, char *argv[])
     GetValue(wav_path, WAV_PATH, model_path);
 
     struct timeval start, end;
-    gettimeofday(&start, NULL);
-    FUNASR_HANDLE asr_handle=FunOfflineInit(model_path, 1);
+    gettimeofday(&start, nullptr);
+    bool use_gpu_ = use_gpu.getValue();
+    int batch_size_ = batch_size.getValue();
+    FUNASR_HANDLE asr_handle=FunOfflineInit(model_path, 1, use_gpu_, batch_size_);
 
     if (!asr_handle)
     {
@@ -180,7 +192,7 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    gettimeofday(&end, NULL);
+    gettimeofday(&end, nullptr);
     long seconds = (end.tv_sec - start.tv_sec);
     long modle_init_micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
     LOG(INFO) << "Model initialization takes " << (double)modle_init_micros / 1000000 << " s";
@@ -234,7 +246,7 @@ int main(int argc, char *argv[])
     }
     for (int i = 0; i < rtf_threds; i++)
     {
-        threads.emplace_back(thread(runReg, asr_handle, wav_list, wav_ids, &total_length, &total_time, i, glob_beam, lat_beam, am_sc, value_bias, hotword_path));
+        threads.emplace_back(thread(runReg, asr_handle, wav_list, wav_ids, audio_fs.getValue(), &total_length, &total_time, i, glob_beam, lat_beam, am_sc, value_bias, hotword_path));
     }
 
     for (auto& thread : threads)

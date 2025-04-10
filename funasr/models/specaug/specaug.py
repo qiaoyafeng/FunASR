@@ -1,16 +1,20 @@
 """SpecAugment module."""
+
 from typing import Optional
 from typing import Sequence
 from typing import Union
 
-from funasr.models.specaug.abs_specaug import AbsSpecAug
-from funasr.layers.mask_along_axis import MaskAlongAxis
-from funasr.layers.mask_along_axis import MaskAlongAxisVariableMaxWidth
-from funasr.layers.mask_along_axis import MaskAlongAxisLFR
-from funasr.layers.time_warp import TimeWarp
+from funasr.models.specaug.mask_along_axis import MaskAlongAxis
+from funasr.models.specaug.mask_along_axis import MaskAlongAxisVariableMaxWidth
+from funasr.models.specaug.mask_along_axis import MaskAlongAxisLFR
+from funasr.models.specaug.time_warp import TimeWarp
+from funasr.register import tables
+
+import torch.nn as nn
 
 
-class SpecAug(AbsSpecAug):
+@tables.register("specaug_classes", "SpecAug")
+class SpecAug(nn.Module):
     """Implementation of SpecAug.
 
     Reference:
@@ -38,9 +42,7 @@ class SpecAug(AbsSpecAug):
         num_time_mask: int = 2,
     ):
         if not apply_time_warp and not apply_time_mask and not apply_freq_mask:
-            raise ValueError(
-                "Either one of time_warp, time_mask, or freq_mask should be applied"
-            )
+            raise ValueError("Either one of time_warp, time_mask, or freq_mask should be applied")
         if (
             apply_time_mask
             and (time_mask_width_range is not None)
@@ -99,7 +101,9 @@ class SpecAug(AbsSpecAug):
             x, x_lengths = self.time_mask(x, x_lengths)
         return x, x_lengths
 
-class SpecAugLFR(AbsSpecAug):
+
+@tables.register("specaug_classes", "SpecAugLFR")
+class SpecAugLFR(nn.Module):
     """Implementation of SpecAug.
     lfr_rate：low frame rate
     """
@@ -119,9 +123,7 @@ class SpecAugLFR(AbsSpecAug):
         num_time_mask: int = 2,
     ):
         if not apply_time_warp and not apply_time_mask and not apply_freq_mask:
-            raise ValueError(
-                "Either one of time_warp, time_mask, or freq_mask should be applied"
-            )
+            raise ValueError("Either one of time_warp, time_mask, or freq_mask should be applied")
         if (
             apply_time_mask
             and (time_mask_width_range is not None)
@@ -146,7 +148,7 @@ class SpecAugLFR(AbsSpecAug):
                 dim="freq",
                 mask_width_range=freq_mask_width_range,
                 num_mask=num_freq_mask,
-                lfr_rate=lfr_rate+1,
+                lfr_rate=lfr_rate + 1,
             )
 
         else:

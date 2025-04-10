@@ -53,8 +53,8 @@ void CTokenizer::JiebaInit(std::string punc_config){
 
         SetJiebaRes(jieba_dict_trie_, jieba_model_);
     }else {
-        jieba_dict_trie_ = NULL;
-        jieba_model_ = NULL;
+        jieba_dict_trie_ = nullptr;
+        jieba_model_ = nullptr;
     }
 }
 
@@ -117,6 +117,61 @@ bool CTokenizer::OpenYaml(const char* sz_yamlfile)
 					m_punc2id.insert(make_pair<string, int>(Puncs[i].as<string>(), i));
 				}
 			}
+		}
+	}
+	catch (YAML::BadFile& e) {
+		LOG(ERROR) << "Read error!";
+		return  false;
+	}
+	m_ready = true;
+	return m_ready;
+}
+
+bool CTokenizer::OpenYaml(const char* sz_yamlfile, const char* token_file)
+{
+	YAML::Node m_Config;
+	try{
+		m_Config = YAML::LoadFile(sz_yamlfile);
+	}catch(exception const &e){
+        LOG(INFO) << "Error loading file, yaml file error or not exist.";
+        exit(-1);
+    }
+
+	try
+	{
+		YAML::Node conf_seg_jieba = m_Config["seg_jieba"];
+        if (conf_seg_jieba.IsDefined()){
+            seg_jieba = conf_seg_jieba.as<bool>();
+        }
+
+		auto Puncs = m_Config["model_conf"]["punc_list"];
+		if (Puncs.IsSequence())
+		{
+			for (size_t i = 0; i < Puncs.size(); ++i)
+			{
+				if (Puncs[i].IsScalar())
+				{ 
+					m_id2punc.push_back(Puncs[i].as<string>());
+					m_punc2id.insert(make_pair<string, int>(Puncs[i].as<string>(), i));
+				}
+			}
+		}
+
+		nlohmann::json json_array;
+		std::ifstream file(token_file);
+		if (file.is_open()) {
+			file >> json_array;
+			file.close();
+		} else {
+			LOG(INFO) << "Error loading token file, token file error or not exist.";
+			return  false;
+		}
+
+		int i = 0;
+		for (const auto& element : json_array) {
+			m_id2token.push_back(element);
+			m_token2id[element] = i;
+			i++;
 		}
 	}
 	catch (YAML::BadFile& e) {

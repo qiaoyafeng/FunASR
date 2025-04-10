@@ -18,11 +18,12 @@ Paraformer::Paraformer()
 }
 
 // offline
-void Paraformer::InitAsr(const std::string &am_model, const std::string &am_cmvn, const std::string &am_config, int thread_num){
+void Paraformer::InitAsr(const std::string &am_model, const std::string &am_cmvn, const std::string &am_config, const std::string &token_file, int thread_num){
+    LoadConfigFromYaml(am_config.c_str());
     // knf options
     fbank_opts_.frame_opts.dither = 0;
     fbank_opts_.mel_opts.num_bins = n_mels;
-    fbank_opts_.frame_opts.samp_freq = MODEL_SAMPLE_RATE;
+    fbank_opts_.frame_opts.samp_freq = asr_sample_rate;
     fbank_opts_.frame_opts.window_type = window_type;
     fbank_opts_.frame_opts.frame_shift_ms = frame_shift;
     fbank_opts_.frame_opts.frame_length_ms = frame_length;
@@ -44,40 +45,21 @@ void Paraformer::InitAsr(const std::string &am_model, const std::string &am_cmvn
         exit(-1);
     }
 
-    string strName;
-    GetInputName(m_session_.get(), strName);
-    m_strInputNames.push_back(strName.c_str());
-    GetInputName(m_session_.get(), strName,1);
-    m_strInputNames.push_back(strName);
-    if (use_hotword) {
-        GetInputName(m_session_.get(), strName, 2);
-        m_strInputNames.push_back(strName);
-    }
-    
-    size_t numOutputNodes = m_session_->GetOutputCount();
-    for(int index=0; index<numOutputNodes; index++){
-        GetOutputName(m_session_.get(), strName, index);
-        m_strOutputNames.push_back(strName);
-    }
-
-    for (auto& item : m_strInputNames)
-        m_szInputNames.push_back(item.c_str());
-    for (auto& item : m_strOutputNames)
-        m_szOutputNames.push_back(item.c_str());
-    vocab = new Vocab(am_config.c_str());
-    LoadConfigFromYaml(am_config.c_str());
-	phone_set_ = new PhoneSet(am_config.c_str());
+    GetInputNames(m_session_.get(), m_strInputNames, m_szInputNames);
+    GetOutputNames(m_session_.get(), m_strOutputNames, m_szOutputNames);
+    vocab = new Vocab(token_file.c_str());
+	phone_set_ = new PhoneSet(token_file.c_str());
     LoadCmvn(am_cmvn.c_str());
 }
 
 // online
-void Paraformer::InitAsr(const std::string &en_model, const std::string &de_model, const std::string &am_cmvn, const std::string &am_config, int thread_num){
+void Paraformer::InitAsr(const std::string &en_model, const std::string &de_model, const std::string &am_cmvn, const std::string &am_config, const std::string &token_file, int thread_num){
     
     LoadOnlineConfigFromYaml(am_config.c_str());
     // knf options
     fbank_opts_.frame_opts.dither = 0;
     fbank_opts_.mel_opts.num_bins = n_mels;
-    fbank_opts_.frame_opts.samp_freq = MODEL_SAMPLE_RATE;
+    fbank_opts_.frame_opts.samp_freq = asr_sample_rate;
     fbank_opts_.frame_opts.window_type = window_type;
     fbank_opts_.frame_opts.frame_shift_ms = frame_shift;
     fbank_opts_.frame_opts.frame_length_ms = frame_length;
@@ -143,15 +125,16 @@ void Paraformer::InitAsr(const std::string &en_model, const std::string &de_mode
     for (auto& item : de_strOutputNames)
         de_szOutputNames_.push_back(item.c_str());
 
-    vocab = new Vocab(am_config.c_str());
-    phone_set_ = new PhoneSet(am_config.c_str());
+    vocab = new Vocab(token_file.c_str());
+    phone_set_ = new PhoneSet(token_file.c_str());
     LoadCmvn(am_cmvn.c_str());
 }
 
 // 2pass
-void Paraformer::InitAsr(const std::string &am_model, const std::string &en_model, const std::string &de_model, const std::string &am_cmvn, const std::string &am_config, int thread_num){
+void Paraformer::InitAsr(const std::string &am_model, const std::string &en_model, const std::string &de_model, 
+    const std::string &am_cmvn, const std::string &am_config, const std::string &token_file, const std::string &online_token_file, int thread_num){
     // online
-    InitAsr(en_model, de_model, am_cmvn, am_config, thread_num);
+    InitAsr(en_model, de_model, am_cmvn, am_config, online_token_file, thread_num);
 
     // offline
     try {
@@ -162,38 +145,18 @@ void Paraformer::InitAsr(const std::string &am_model, const std::string &en_mode
         exit(-1);
     }
 
-    string strName;
-    GetInputName(m_session_.get(), strName);
-    m_strInputNames.push_back(strName.c_str());
-    GetInputName(m_session_.get(), strName,1);
-    m_strInputNames.push_back(strName);
-
-    if (use_hotword) {
-        GetInputName(m_session_.get(), strName, 2);
-        m_strInputNames.push_back(strName);
-    }
-    
-    // support time stamp
-    size_t numOutputNodes = m_session_->GetOutputCount();
-    for(int index=0; index<numOutputNodes; index++){
-        GetOutputName(m_session_.get(), strName, index);
-        m_strOutputNames.push_back(strName);
-    }
-
-    for (auto& item : m_strInputNames)
-        m_szInputNames.push_back(item.c_str());
-    for (auto& item : m_strOutputNames)
-        m_szOutputNames.push_back(item.c_str());
+    GetInputNames(m_session_.get(), m_strInputNames, m_szInputNames);
+    GetOutputNames(m_session_.get(), m_strOutputNames, m_szOutputNames);
 }
 
 void Paraformer::InitLm(const std::string &lm_file, 
-                        const std::string &lm_cfg_file) {
+                        const std::string &lm_cfg_file, 
+                        const std::string &lex_file) {
     try {
         lm_ = std::shared_ptr<fst::Fst<fst::StdArc>>(
             fst::Fst<fst::StdArc>::Read(lm_file));
         if (lm_){
-            if (vocab) { delete vocab; }
-            vocab = new Vocab(lm_cfg_file.c_str());
+            lm_vocab = new Vocab(lm_cfg_file.c_str(), lex_file.c_str());
             LOG(INFO) << "Successfully load lm file " << lm_file;
         }else{
             LOG(ERROR) << "Failed to load lm file " << lm_file;
@@ -215,6 +178,9 @@ void Paraformer::LoadConfigFromYaml(const char* filename){
     }
 
     try{
+        YAML::Node frontend_conf = config["frontend_conf"];
+        this->asr_sample_rate = frontend_conf["fs"].as<int>();
+
         YAML::Node lang_conf = config["lang"];
         if (lang_conf.IsDefined()){
             language = lang_conf.as<string>();
@@ -256,6 +222,9 @@ void Paraformer::LoadOnlineConfigFromYaml(const char* filename){
 
         this->cif_threshold = predictor_conf["threshold"].as<double>();
         this->tail_alphas = predictor_conf["tail_threshold"].as<double>();
+
+        this->asr_sample_rate = frontend_conf["fs"].as<int>();
+
 
     }catch(exception const &e){
         LOG(ERROR) << "Error when load argument from vad config YAML.";
@@ -300,10 +269,18 @@ void Paraformer::InitSegDict(const std::string &seg_dict_model) {
 
 Paraformer::~Paraformer()
 {
-    if(vocab)
+    if(vocab){
         delete vocab;
-    if(seg_dict)
+    }
+    if(lm_vocab){
+        delete lm_vocab;
+    }
+    if(seg_dict){
         delete seg_dict;
+    }
+    if(phone_set_){
+        delete phone_set_;
+    }
 }
 
 void Paraformer::StartUtterance()
@@ -448,15 +425,23 @@ void Paraformer::LfrCmvn(std::vector<std::vector<float>> &asr_feats) {
     asr_feats = out_feats;
 }
 
-string Paraformer::Forward(float* din, int len, bool input_finished, const std::vector<std::vector<float>> &hw_emb, void* decoder_handle)
+std::vector<std::string> Paraformer::Forward(float** din, int* len, bool input_finished, const std::vector<std::vector<float>> &hw_emb, void* decoder_handle, int batch_in)
 {
+    std::vector<std::string> results;
+    string result="";
     WfstDecoder* wfst_decoder = (WfstDecoder*)decoder_handle;
     int32_t in_feat_dim = fbank_opts_.mel_opts.num_bins;
 
+    if(batch_in != 1){
+        results.push_back(result);
+        return results;
+    }
+
     std::vector<std::vector<float>> asr_feats;
-    FbankKaldi(MODEL_SAMPLE_RATE, din, len, asr_feats);
+    FbankKaldi(asr_sample_rate, din[0], len[0], asr_feats);
     if(asr_feats.size() == 0){
-      return "";
+        results.push_back(result);
+        return results;
     }
     LfrCmvn(asr_feats);
     int32_t feat_dim = lfr_m*in_feat_dim;
@@ -495,7 +480,8 @@ string Paraformer::Forward(float* din, int len, bool input_finished, const std::
         if (use_hotword) {
             if(hw_emb.size()<=0){
                 LOG(ERROR) << "hw_emb is null";
-                return "";
+                results.push_back(result);
+                return results;
             }
             //PrintMat(hw_emb, "input_clas_emb");
             const int64_t hotword_shape[3] = {1, static_cast<int64_t>(hw_emb.size()), static_cast<int64_t>(hw_emb[0].size())};
@@ -512,10 +498,10 @@ string Paraformer::Forward(float* din, int len, bool input_finished, const std::
     }catch (std::exception const &e)
     {
         LOG(ERROR)<<e.what();
-        return "";
+        results.push_back(result);
+        return results;
     }
 
-    string result="";
     try {
         auto outputTensor = m_session_->Run(Ort::RunOptions{nullptr}, m_szInputNames.data(), input_onnx.data(), input_onnx.size(), m_szOutputNames.data(), m_szOutputNames.size());
         std::vector<int64_t> outputShape = outputTensor[0].GetTensorTypeAndShapeInfo().GetShape();
@@ -563,7 +549,8 @@ string Paraformer::Forward(float* din, int len, bool input_finished, const std::
         LOG(ERROR)<<e.what();
     }
 
-    return result;
+    results.push_back(result);
+    return results;
 }
 
 
@@ -673,6 +660,11 @@ std::vector<std::vector<float>> Paraformer::CompileHotwordEmbedding(std::string 
 Vocab* Paraformer::GetVocab()
 {
     return vocab;
+}
+
+Vocab* Paraformer::GetLmVocab()
+{
+    return lm_vocab;
 }
 
 PhoneSet* Paraformer::GetPhoneSet()

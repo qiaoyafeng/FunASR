@@ -8,6 +8,12 @@ FunASR Real-time Speech Recognition Software Package integrates real-time versio
 
 | TIME       | INFO                                                                                | IMAGE VERSION                       | IMAGE ID     |
 |------------|-------------------------------------------------------------------------------------|-------------------------------------|--------------|
+| 2024.10.29 | The 2pass-offline mode supports the SensevoiceSmal model | funasr-runtime-sdk-online-cpu-0.1.12 | f5febc5cf13a |
+| 2024.09.26 | Fix memory leak | funasr-runtime-sdk-online-cpu-0.1.11 | e51a36c42771 |
+| 2024.05.15 | Adapting to FunASR 1.0 model structure | funasr-runtime-sdk-online-cpu-0.1.10 | 1c2adfcff84d |
+| 2024.03.05 | docker image supports ARM64 platform, update modelscope | funasr-runtime-sdk-online-cpu-0.1.9 | 4a875e08c7a2 |
+| 2024.01.25 | Optimization of the client-side | funasr-runtime-sdk-online-cpu-0.1.7  | 2aa23805572e      |
+| 2024.01.03 | The 2pass-offline mode supports Ngram language model decoding and WFST hotwords, while also addressing known crash issues and memory leak problems | funasr-runtime-sdk-online-cpu-0.1.6  | f99925110d27      |
 | 2023.11.09 | fix bug: without online results                                                     | funasr-runtime-sdk-online-cpu-0.1.5 | b16584b6d38b      |
 | 2023.11.08 | supporting server-side loading of hotwords, adaptation to runtime structure changes | funasr-runtime-sdk-online-cpu-0.1.4 | 691974017c38 |
 | 2023.09.19 | supporting hotwords, timestamps, and ITN model in 2pass mode                        | funasr-runtime-sdk-online-cpu-0.1.2 | 7222c5319bcf |
@@ -26,9 +32,9 @@ If you do not have Docker installed, please refer to [Docker Installation](https
 ### Pull Docker Image
 Use the following command to pull and start the FunASR software package docker image:
 ```shell
-sudo docker pull registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.5
+sudo docker pull registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.12
 mkdir -p ./funasr-runtime-resources/models
-sudo docker run -p 10096:10095 -it --privileged=true -v $PWD/funasr-runtime-resources/models:/workspace/models registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.5
+sudo docker run -p 10096:10095 -it --privileged=true -v $PWD/funasr-runtime-resources/models:/workspace/models registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.12
 ```
 
 ### Launching the Server
@@ -42,7 +48,8 @@ nohup bash run_server_2pass.sh \
   --model-dir damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx  \
   --online-model-dir damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx  \
   --punc-dir damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx \
-  --itn-dir thuduj12/fst_itn_zh > log.out 2>&1 &
+  --lm-dir damo/speech_ngram_lm_zh-cn-ai-wesp-fst \
+  --itn-dir thuduj12/fst_itn_zh > log.txt 2>&1 &
 
 # If you want to close ssl，please add：--certfile 0
 ```
@@ -56,7 +63,7 @@ wget https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/sample/funasr_sa
 For illustration, we will use the Python language client, which supports audio formats (.wav, .pcm) and a multi-file list wav.scp input.
 
 ```shell
-python3 wss_client_asr.py --host "127.0.0.1" --port 10095 --mode 2pass
+python3 funasr_wss_client.py --host "127.0.0.1" --port 10096 --mode 2pass
 ```
 
 ------------------
@@ -80,23 +87,22 @@ Use the flollowing script to start the server ：
 ```shell
 cd /workspace/FunASR/runtime
 nohup bash run_server_2pass.sh \
-  --model-dir damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx \
+  --model-dir damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx \
   --online-model-dir damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx \
   --vad-dir damo/speech_fsmn_vad_zh-cn-16k-common-onnx \
   --punc-dir damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx \
+  --lm-dir damo/speech_ngram_lm_zh-cn-ai-wesp-fst \
   --itn-dir thuduj12/fst_itn_zh \
-  --decoder-thread-num 32 \
-  --io-thread-num  8 \
-  --port 10095 \
   --certfile  ../../../ssl_key/server.crt \
   --keyfile ../../../ssl_key/server.key \
-  --hotword ../../hotwords.txt > log.out 2>&1 &
+  --hotword ../../hotwords.txt > log.txt 2>&1 &
 
 # If you want to close ssl，please add：--certfile 0
-# If you want to deploy the timestamp or nn hotword model, please set --model-dir to the corresponding model:
-# speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx（timestamp）
-# damo/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx（hotword）
-
+# If you want to deploy the SenseVoiceSmall, timestamp or nn hotword model, please set --model-dir to the corresponding model:
+#   iic/SenseVoiceSmall-onnx
+#   speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx（timestamp）
+#   damo/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx（hotword）
+# The ASR results “<|zh|><|NEUTRAL|><|Speech|> ” in SenseVoiceSmall-onnx means spoken language、speech emotion、audio event
 ```
 
 ### More details about the script run_server_2pass.sh:
@@ -104,17 +110,16 @@ nohup bash run_server_2pass.sh \
 --download-model-dir: Model download address, download models from Modelscope by setting the model ID.
 --model-dir: modelscope model ID or local model path.
 --online-model-dir modelscope model ID
---quantize: True for quantized ASR model, False for non-quantized ASR model. Default is True.
 --vad-dir: modelscope model ID or local model path.
---vad-quant: True for quantized VAD model, False for non-quantized VAD model. Default is True.
 --punc-dir: modelscope model ID or local model path.
---punc-quant: True for quantized PUNC model, False for non-quantized PUNC model. Default is True.
+--lm-dir modelscope model ID or local model path.
 --itn-dir modelscope model ID or local model path.
 --port: Port number that the server listens on. Default is 10095.
---decoder-thread-num: The number of thread pools on the server side that can handle concurrent requests. The default value is 8.
+--decoder-thread-num: The number of thread pools on the server side that can handle concurrent requests.
+                      The script will automatically configure parameters decoder-thread-num and io-thread-num based on the server's thread count.
+--io-thread-num: Number of IO threads that the server starts.
 --model-thread-num: The number of internal threads for each recognition route to control the parallelism of the ONNX model. 
         The default value is 1. It is recommended that decoder-thread-num * model-thread-num equals the total number of threads.
---io-thread-num: Number of IO threads that the server starts. Default is 1.
 --certfile <string>: SSL certificate file. Default is ../../../ssl_key/server.crt. If you want to close ssl，set 0
 --keyfile <string>: SSL key file. Default is ../../../ssl_key/server.key. 
 --hotword: Hotword file path, one line for each hotword(e.g.:阿里巴巴 20), if the client provides hot words, then combined with the hot words provided by the client.

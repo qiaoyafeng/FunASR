@@ -11,7 +11,7 @@ CTTransformerOnline::CTTransformerOnline()
 {
 }
 
-void CTTransformerOnline::InitPunc(const std::string &punc_model, const std::string &punc_config, int thread_num){
+void CTTransformerOnline::InitPunc(const std::string &punc_model, const std::string &punc_config, const std::string &token_file, int thread_num){
     session_options.SetIntraOpNumThreads(thread_num);
     session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
     session_options.DisableCpuMemArena();
@@ -25,25 +25,10 @@ void CTTransformerOnline::InitPunc(const std::string &punc_model, const std::str
         exit(-1);
     }
     // read inputnames outputnames
-    string strName;
-    GetInputName(m_session.get(), strName);
-    m_strInputNames.push_back(strName.c_str());
-    GetInputName(m_session.get(), strName, 1);
-    m_strInputNames.push_back(strName);
-    GetInputName(m_session.get(), strName, 2);
-    m_strInputNames.push_back(strName);
-    GetInputName(m_session.get(), strName, 3);
-    m_strInputNames.push_back(strName);
-    
-    GetOutputName(m_session.get(), strName);
-    m_strOutputNames.push_back(strName);
+    GetInputNames(m_session.get(), m_strInputNames, m_szInputNames);
+    GetOutputNames(m_session.get(), m_strOutputNames, m_szOutputNames);
 
-    for (auto& item : m_strInputNames)
-        m_szInputNames.push_back(item.c_str());
-    for (auto& item : m_strOutputNames)
-        m_szOutputNames.push_back(item.c_str());
-
-	m_tokenizer.OpenYaml(punc_config.c_str());
+	m_tokenizer.OpenYaml(punc_config.c_str(), token_file.c_str());
 }
 
 CTTransformerOnline::~CTTransformerOnline()
@@ -57,6 +42,11 @@ string CTTransformerOnline::AddPunc(const char* sz_input, vector<string> &arr_ca
     vector<int> InputData;
     string strText; //full_text
     strText = accumulate(arr_cache.begin(), arr_cache.end(), strText);
+
+    // 如果上一句的结尾是英语字母，并且这一句的开始也是英语字母，应该添加空格
+    if ((strText.size() > 0 and !(strText[strText.size()-1] & 0x80)) && (strlen(sz_input) > 0 && !(sz_input[0] & 0x80)))
+        strText += " ";
+
     strText += sz_input;  // full_text = precache + text  
     m_tokenizer.Tokenize(strText.c_str(), strOut, InputData);
 
@@ -120,7 +110,7 @@ string CTTransformerOnline::AddPunc(const char* sz_input, vector<string> &arr_ca
     vector<string> WordWithPunc;
     for (int i = 0; i < sentence_words_list.size(); i++) // for i in range(0, len(sentence_words_list)):
     {
-        if (i > 0 && !(sentence_words_list[i][0] & 0x80) && (i + 1) < sentence_words_list.size() && !(sentence_words_list[i + 1][0] & 0x80))
+        if (!(sentence_words_list[i][0] & 0x80) && (i + 1) < sentence_words_list.size() && !(sentence_words_list[i + 1][0] & 0x80))
         {
             sentence_words_list[i] = sentence_words_list[i] + " ";
         }

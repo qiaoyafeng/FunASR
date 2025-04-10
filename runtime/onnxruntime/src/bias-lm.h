@@ -48,7 +48,7 @@ class BiasLm {
     std::vector<std::vector<int>> split_id_vec;
 
     struct timeval start, end;
-    gettimeofday(&start, NULL);
+    gettimeofday(&start, nullptr);
 
     LoadCfgFromYaml(cfg_file.c_str(), opt_);
     while (getline(ifs_hws, line)) {
@@ -65,12 +65,17 @@ class BiasLm {
       if (text.size() > 1) {
         score = std::stof(text[1]);
       }
-      Utf8ToCharset(text[0], split_str);
+      SplitChiEngCharacters(text[0], split_str);
       for (auto &str : split_str) {
-        split_id.push_back(phn_set_.String2Id(str));
-        if (!phn_set_.Find(str)) {
-          is_oov = true;
-          break;
+        std::vector<string> lex_vec;
+        std::string lex_str = vocab_.Word2Lex(str);
+        SplitStringToVector(lex_str, " ", true, &lex_vec);
+        for (auto &token : lex_vec) {
+          split_id.push_back(phn_set_.String2Id(token));
+          if (!phn_set_.Find(token)) {
+            is_oov = true;
+            break;
+          }
         }
       }
       if (!is_oov) {
@@ -81,7 +86,7 @@ class BiasLm {
     BuildGraph(split_id_vec, custom_weight);
     ifs_hws.close();
 
-    gettimeofday(&end, NULL);
+    gettimeofday(&end, nullptr);
     long seconds = (end.tv_sec - start.tv_sec);
     long modle_init_micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
     LOG(INFO) << "Build bias lm takes " << (double)modle_init_micros / 1000000 << " s";
@@ -94,7 +99,7 @@ class BiasLm {
     std::vector<std::vector<int>> split_id_vec;
 
     struct timeval start, end;
-    gettimeofday(&start, NULL);
+    gettimeofday(&start, nullptr);
     opt_.incre_bias_ = inc_bias;
     for (const pair<string, int>& kv : hws_map) {
       float score = 1.0f;
@@ -103,12 +108,17 @@ class BiasLm {
       std::vector<std::string> split_str;
       std::vector<int> split_id;
       score = kv.second;
-      Utf8ToCharset(kv.first, split_str);
+      SplitChiEngCharacters(kv.first, split_str);
       for (auto &str : split_str) {
-        split_id.push_back(phn_set_.String2Id(str));
-        if (!phn_set_.Find(str)) {
-          is_oov = true;
-          break;
+        std::vector<string> lex_vec;
+        std::string lex_str = vocab_.Word2Lex(str);
+        SplitStringToVector(lex_str, " ", true, &lex_vec);
+        for (auto &token : lex_vec) {
+          split_id.push_back(phn_set_.String2Id(token));
+          if (!phn_set_.Find(token)) {
+            is_oov = true;
+            break;
+          }
         }
       }
       if (!is_oov) {
@@ -118,7 +128,7 @@ class BiasLm {
     }
     BuildGraph(split_id_vec, custom_weight);
 
-    gettimeofday(&end, NULL);
+    gettimeofday(&end, nullptr);
     long seconds = (end.tv_sec - start.tv_sec);
     long modle_init_micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
     LOG(INFO) << "Build bias lm takes " << (double)modle_init_micros / 1000000 << " s";
