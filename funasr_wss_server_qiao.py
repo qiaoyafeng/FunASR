@@ -19,9 +19,13 @@ import torch
 import numpy as np
 from speechbrain.pretrained import SpeakerRecognition
 
+IS_SPEAKER_VERIFICATION = True
+SPEAKER_VERIFICATION_THRESHOLD = 0.35
+
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星", "好心情"]
 
 DEFAULT_SAMPLE_RATE = 16000
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -199,6 +203,8 @@ async def ws_serve(websocket, path):
     speech_end_i = -1
     websocket.wav_name = "microphone"
     websocket.mode = "2pass"
+    websocket.speaker_verification_activate = False
+    websocket.speaker_verification_sample_emb = None
     print("new user connected", flush=True)
 
     try:
@@ -314,36 +320,35 @@ async def async_vad(websocket, audio_in):
     return speech_start, speech_end
 
 
-async def async_asr(websocket, audio_in):
-    global default_sample_emb
-    if len(audio_in) > 0:
-        print(len(audio_in))
-        signal = bytes_to_tensor(audio_in)
-        audio_emb = spkrec.encode_batch(signal).squeeze(0)
-        print(f"audio_emb: {audio_emb.shape}")
+def speaker_verify(websocket, audio_in, text):
+    signal = bytes_to_tensor(audio_in)
+    audio_emb = spkrec.encode_batch(signal).squeeze(0)
+    if text and any(
+            keyword in text for keyword in HXQ_ROLE_KEYWORDS
+    ):
+        print(f"keyword audio_emb")
+        websocket.speaker_verification_sample_emb = audio_emb
+        websocket.speaker_verification_activate = True
+        return True
+    else:
+        if websocket.speaker_verification_activate:
+            score = torch.nn.functional.cosine_similarity(websocket.speaker_verification_sample_emb, audio_emb,
+                                                          dim=1)
+            print(f"async_asr score : {score.item()}")
+            if score.item() < SPEAKER_VERIFICATION_THRESHOLD:
+                print(f"no sample user audio!")
+                return False
+        return True
 
+
+async def async_asr(websocket, audio_in):
+    if len(audio_in) > 0:
         rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
         text = rec_result["text"]
         print(f"text: {text}")
-        if text and any(
-            keyword in text for keyword in HXQ_ROLE_KEYWORDS
-        ):
-            print(f"keyword audio_emb: {audio_emb.shape}")
-            sample_emb = audio_emb
-            default_sample_emb = audio_emb
-        else:
-            print(f"default_sample_emb: {default_sample_emb.shape}")
-            sample_emb = default_sample_emb
-
-        score = torch.nn.functional.cosine_similarity(sample_emb, audio_emb, dim=1)
-
-        print(f"async_asr score : {score.item()}")
-        if score.item() < 0.4:
-            print(f"不是指定人语音")
-            return
-        else:
-            print(f"指定人语音")
-
+        if IS_SPEAKER_VERIFICATION:
+            if not speaker_verify(websocket, audio_in, text):
+                return
         print("offline_asr, ", rec_result)
         if model_punc is not None and len(rec_result["text"]) > 0:
             # print("offline, before punc", rec_result, "cache", websocket.status_dict_punc)
@@ -376,16 +381,21 @@ async def async_asr(websocket, audio_in):
         )
         await websocket.send(message)    
 
+
 async def async_asr_online(websocket, audio_in):
     if len(audio_in) > 0:
         # print(websocket.status_dict_asr_online.get("is_final", False))
-        rec_result = model_asr_streaming.generate(
-            input=audio_in, **websocket.status_dict_asr_online
-        )[0]
-        # print("online, ", rec_result)
+
         if websocket.mode == "2pass" and websocket.status_dict_asr_online.get("is_final", False):
             return
             #     websocket.status_dict_asr_online["cache"] = dict()
+
+        rec_result = model_asr_streaming.generate(input=audio_in, **websocket.status_dict_asr)[0]
+        text = rec_result["text"]
+        print(f"text: {text}")
+        if IS_SPEAKER_VERIFICATION:
+            if not speaker_verify(websocket, audio_in, text):
+                return
         if len(rec_result["text"]):
             mode = "2pass-online" if "2pass" in websocket.mode else websocket.mode
             message = json.dumps(
