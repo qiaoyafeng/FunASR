@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import os
 import uuid
 
 import librosa
@@ -19,8 +20,9 @@ import torch
 import numpy as np
 from speechbrain.pretrained import SpeakerRecognition
 
-IS_SPEAKER_VERIFICATION = True
-SPEAKER_VERIFICATION_THRESHOLD = 0.35
+IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
+
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.35)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星", "好心情"]
 
