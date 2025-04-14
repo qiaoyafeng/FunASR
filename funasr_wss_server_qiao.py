@@ -66,7 +66,7 @@ parser.add_argument("--ncpu", type=int, default=4, help="cpu cores")
 parser.add_argument(
     "--certfile",
     type=str,
-    default="",
+    default="runtime/ssl_key/server.crt",
     required=False,
     help="certfile for ssl",
 )
@@ -74,7 +74,7 @@ parser.add_argument(
 parser.add_argument(
     "--keyfile",
     type=str,
-    default="../../ssl_key/server.key",
+    default="runtime/ssl_key/server.key",
     required=False,
     help="keyfile for ssl",
 )
@@ -142,9 +142,9 @@ spkrec = SpeakerRecognition.from_hparams(
 print("model loaded! only support one client at the same time now!!!!")
 
 
-sample_audio = "qiao_16k.wav"
-waveform, sample_rate = torchaudio.load(sample_audio)
-default_sample_emb = spkrec.encode_batch(waveform).squeeze(0)
+# sample_audio = "qiao_16k.wav"
+# waveform, sample_rate = torchaudio.load(sample_audio)
+# default_sample_emb = spkrec.encode_batch(waveform).squeeze(0)
 
 
 def load_audio_from_bytes(audio_bytes):
@@ -205,7 +205,7 @@ async def ws_serve(websocket, path):
     websocket.mode = "2pass"
     websocket.speaker_verification_activate = False
     websocket.speaker_verification_sample_emb = None
-    print("new user connected", flush=True)
+    print(f"new user connected: websocket:{websocket}", flush=True)
 
     try:
         async for message in websocket:
@@ -417,10 +417,12 @@ if len(args.certfile) > 0:
     ssl_key = args.keyfile
 
     ssl_context.load_cert_chain(ssl_cert, keyfile=ssl_key)
+    print(f"host: {args.host}, port: {args.port}, ssl_context: {ssl_context}")
     start_server = websockets.serve(
         ws_serve, args.host, args.port, subprotocols=["binary"], ping_interval=None, ssl=ssl_context
     )
 else:
+    print(f"host: {args.host}, port: {args.port}")
     start_server = websockets.serve(
         ws_serve, args.host, args.port, subprotocols=["binary"], ping_interval=None
     )
