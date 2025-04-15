@@ -382,7 +382,7 @@ def speaker_verify(websocket, audio_in, text):
     signal = bytes_to_tensor(audio_in)
     audio_emb = spkrec.encode_batch(signal).squeeze(0)
     if text and any(keyword in text for keyword in HXQ_ROLE_KEYWORDS):
-        print(f"keyword audio_emb")
+        logger.info(f"keyword audio_emb")
         websocket.speaker_verification_sample_emb = audio_emb
         websocket.speaker_verification_activate = True
         return True
@@ -391,9 +391,9 @@ def speaker_verify(websocket, audio_in, text):
             score = torch.nn.functional.cosine_similarity(
                 websocket.speaker_verification_sample_emb, audio_emb, dim=1
             )
-            print(f"async_asr score : {score.item()}")
+            logger.info(f"async_asr score : {score.item()}")
             if score.item() < SPEAKER_VERIFICATION_THRESHOLD:
-                print(f"no sample user audio!")
+                logger.info(f"no sample user audio!")
                 return False
         return True
 
@@ -409,8 +409,8 @@ async def async_asr(websocket, audio_in):
             rec_result = model_asr.generate(
                 input=audio_in, **websocket.status_dict_asr
             )[0]
+        logger.info(f"async_asr  rec_result: {rec_result}")
         text = rec_result["text"]
-        print(f"text: {text}")
         if IS_SPEAKER_VERIFICATION:
             if not speaker_verify(websocket, audio_in, text):
                 return
@@ -463,11 +463,9 @@ async def async_asr_online(websocket, audio_in):
         rec_result = model_asr_streaming.generate(
             input=audio_in, **websocket.status_dict_asr_online
         )
-        if rec_result[0]["text"] != "":
-            logger.info(f"online, {rec_result}")
         rec_result = rec_result[0]
+        logger.info(f"async_asr_online rec_result: {rec_result}")
         text = rec_result["text"]
-        print(f"text: {text}")
         if IS_SPEAKER_VERIFICATION:
             if not speaker_verify(websocket, audio_in, text):
                 return
