@@ -13,7 +13,7 @@ from speechbrain.pretrained import SpeakerRecognition
 
 IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
 
-SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.35)
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.3)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星", "好心情"]
 
@@ -265,9 +265,9 @@ async def ws_serve(websocket, path):
                             audio_in = b"".join(frames_asr_online)
                             try:
                                 await async_asr_online(websocket, audio_in)
-                            except:
+                            except Exception as e:
                                 print(
-                                    f"error in asr streaming, {websocket.status_dict_asr_online}"
+                                    f"error in asr streaming, {websocket.status_dict_asr_online}, error: {e}"
                                 )
                         frames_asr_online = []
                     if speech_start:
@@ -358,12 +358,11 @@ def speaker_verify(websocket, audio_in, text):
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
+        print("offline_asr, ", rec_result)
         text = rec_result["text"]
-        print(f"text: {text}")
         if IS_SPEAKER_VERIFICATION:
             if not speaker_verify(websocket, audio_in, text):
                 return
-        print("offline_asr, ", rec_result)
         if model_punc is not None and len(rec_result["text"]) > 0:
             # print("offline, before punc", rec_result, "cache", websocket.status_dict_punc)
             rec_result = model_punc.generate(
@@ -409,8 +408,9 @@ async def async_asr_online(websocket, audio_in):
         rec_result = model_asr_streaming.generate(
             input=audio_in, **websocket.status_dict_asr
         )[0]
+        print(f"async_asr_online: rec_result: {rec_result}")
         text = rec_result["text"]
-        print(f"text: {text}")
+
         if IS_SPEAKER_VERIFICATION:
             if not speaker_verify(websocket, audio_in, text):
                 return
