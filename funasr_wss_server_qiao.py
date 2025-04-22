@@ -14,7 +14,7 @@ from speechbrain.pretrained import SpeakerRecognition
 
 IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
 
-SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.25)
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.3)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
@@ -267,7 +267,7 @@ async def ws_serve(websocket, path):
                                 await async_asr_online(websocket, audio_in)
                             except Exception as e:
                                 print(
-                                    f"error in asr streaming, {websocket.status_dict_asr_online}, error: {e}"
+                                    f"error in asr streaming, error: {e}"
                                 )
                         frames_asr_online = []
                     if speech_start:
@@ -277,7 +277,6 @@ async def ws_serve(websocket, path):
                         speech_start_i, speech_end_i = await async_vad(
                             websocket, message
                         )
-                        print(f"speech_start_i: {speech_start_i}, speech_end_i: {speech_end_i}")
                     except:
                         print("error in vad")
                     if speech_start_i != -1:
@@ -322,7 +321,7 @@ async def async_vad(websocket, audio_in):
     segments_result = model_vad.generate(input=audio_in, **websocket.status_dict_vad)[
         0
     ]["value"]
-    print(f"async_vad segments_result: {segments_result}")
+    # print(f"async_vad segments_result: {segments_result}")
 
     speech_start = -1
     speech_end = -1
@@ -349,11 +348,15 @@ def speaker_verify(websocket, audio_in, text):
             score = torch.nn.functional.cosine_similarity(
                 websocket.speaker_verification_sample_emb, audio_emb, dim=1
             )
-            print(f"async_asr score : {score.item()}")
+            print(f"speaker_verify score : {score.item()}")
             if score.item() < SPEAKER_VERIFICATION_THRESHOLD:
                 print(f"no sample user audio!")
                 return False
-        return True
+            else:
+                return True
+        else:
+            print(f"speaker_verify speaker_verification_activate : {websocket.speaker_verification_activate}")
+            return False
 
 
 async def async_asr(websocket, audio_in):
@@ -364,10 +367,21 @@ async def async_asr(websocket, audio_in):
         text = rec_result["text"]
         if IS_SPEAKER_VERIFICATION:
             if not speaker_verify(websocket, audio_in, text):
+                mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
+                message = json.dumps(
+                    {
+                        "mode": mode,
+                        "text": "",
+                        "wav_name": websocket.wav_name,
+                        "is_final": websocket.is_speaking,
+                    }
+                )
+                await websocket.send(message)
                 return
+
         end_time = time.time()
         execution_time = end_time - start_time
-        print(f"async_asr generate speaker_verify execute time：{execution_time}秒")
+        # print(f"async_asr generate speaker_verify execute time：{execution_time}秒")
         if model_punc is not None and len(rec_result["text"]) > 0:
             # print("offline, before punc", rec_result, "cache", websocket.status_dict_punc)
             rec_result = model_punc.generate(
@@ -418,12 +432,12 @@ async def async_asr_online(websocket, audio_in):
         print(f"async_asr_online: rec_result: {rec_result}")
         text = rec_result["text"]
 
-        if IS_SPEAKER_VERIFICATION:
-            if not speaker_verify(websocket, audio_in, text):
-                return
+        # if IS_SPEAKER_VERIFICATION:
+        #     if not speaker_verify(websocket, audio_in, text):
+        #         return
         end_time = time.time()
         execution_time = end_time - start_time
-        print(f"async_asr_online generate speaker_verify execute time：{execution_time}秒")
+        # print(f"async_asr_online generate speaker_verify execute time：{execution_time}秒")
         if len(rec_result["text"]):
             mode = "2pass-online" if "2pass" in websocket.mode else websocket.mode
             message = json.dumps(
