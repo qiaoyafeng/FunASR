@@ -6,8 +6,10 @@ import logging
 import os
 import ssl
 import time
+import uuid
 
 import numpy as np
+import soundfile
 import torch
 import torchaudio
 import websockets
@@ -15,7 +17,9 @@ from speechbrain.pretrained import SpeakerRecognition
 
 IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
 
-SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.4)
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.3)
+
+SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURATION", 1.0)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
@@ -369,6 +373,41 @@ def speaker_verify(websocket, audio_in, text):
             return False
 
 
+def extract_embedding(audio: torch.Tensor) -> torch.Tensor:
+    """提取单段音频的声纹嵌入"""
+    return spkrec.encode_batch(audio.squeeze(0))  # 输入形状: (1, samples)
+
+
+def cosine_similarity(emb1: torch.Tensor, emb2: torch.Tensor) -> float:
+    """计算余弦相似度"""
+    return torch.nn.functional.cosine_similarity(emb1, emb2, dim=-1).item()
+
+
+def process_audio_stream(audio_stream: np.ndarray, target_embed: torch.Tensor) -> torch.Tensor:
+    """处理单个音频块并返回静音过滤后的结果"""
+    output = np.zeros_like(audio_stream)
+    frame_size = int(SPEAKER_VERIFICATION_CHUNK_DURATION * DEFAULT_SAMPLE_RATE)
+    has_similarity = False
+    for i in range(0, len(audio_stream), frame_size):
+        frame = audio_stream[i:i + frame_size]
+        if len(frame) < frame_size:  # 丢弃不足一帧的数据
+            continue
+
+        # 转换为Tensor并提取声纹
+        frame_tensor = torch.from_numpy(frame).float().unsqueeze(0)
+        with torch.no_grad():
+            emb = spkrec.encode_batch(frame_tensor)
+            sim = torch.cosine_similarity(target_embed, emb, dim=-1).item()
+            logger.info(f"sim ----- {sim}")
+
+        # 保留高相似度片段
+        if sim >= SPEAKER_VERIFICATION_THRESHOLD:
+            output[i:i + frame_size] = frame
+            has_similarity = True
+
+    return output, has_similarity
+
+
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         start_time = time.time()
@@ -376,18 +415,31 @@ async def async_asr(websocket, audio_in):
         logger.info(f"offline_asr rec_result:  {rec_result}")
         text = rec_result["text"]
         if IS_SPEAKER_VERIFICATION:
-            if not speaker_verify(websocket, audio_in, text):
-                mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
-                message = json.dumps(
-                    {
-                        "mode": mode,
-                        "text": "",
-                        "wav_name": websocket.wav_name,
-                        "is_final": websocket.is_speaking,
-                    }
-                )
-                await websocket.send(message)
-                return
+            if websocket.speaker_verification_activate:
+                chunk_np = np.frombuffer(audio_in, dtype=np.int16).astype(np.float32) / 32768.0
+                processed, has_similarity = process_audio_stream(chunk_np, websocket.speaker_verification_sample_emb)
+                if has_similarity:
+                    rec_result = model_asr.generate(input=processed, **websocket.status_dict_asr)[0]
+                    logger.info(f"offline_asr process_audio_stream   rec_result: {rec_result}")
+                else:
+                    mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
+                    message = json.dumps(
+                        {
+                            "mode": mode,
+                            "text": "",
+                            "wav_name": websocket.wav_name,
+                            "is_final": websocket.is_speaking,
+                        }
+                    )
+                    await websocket.send(message)
+                    return
+            else:
+                if text and any(keyword in text for keyword in HXQ_ROLE_KEYWORDS):
+                    signal = bytes_to_tensor(audio_in)
+                    audio_emb = spkrec.encode_batch(signal).squeeze(0)
+                    logger.info(f"keyword audio_emb")
+                    websocket.speaker_verification_sample_emb = audio_emb
+                    websocket.speaker_verification_activate = True
 
         end_time = time.time()
         execution_time = end_time - start_time
@@ -437,7 +489,7 @@ async def async_asr_online(websocket, audio_in):
         rec_result = model_asr_streaming.generate(
             input=audio_in, **websocket.status_dict_asr
         )[0]
-        logger.info(f"async_asr_online: rec_result: {rec_result}")
+        # logger.info(f"async_asr_online: rec_result: {rec_result}")
         text = rec_result["text"]
 
         # if IS_SPEAKER_VERIFICATION:
