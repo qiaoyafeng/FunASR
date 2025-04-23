@@ -17,9 +17,9 @@ from speechbrain.pretrained import SpeakerRecognition
 
 IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
 
-SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.3)
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.2)
 
-SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURATION", 1.0)
+SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURATION", 2.0)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
@@ -227,7 +227,7 @@ async def ws_serve(websocket, path):
         async for message in websocket:
             if isinstance(message, str):
                 messagejson = json.loads(message)
-                logger.info(f"messagejson: {messagejson}")
+                # logger.info(f"messagejson: {messagejson}")
 
                 if "is_speaking" in messagejson:
                     websocket.is_speaking = messagejson["is_speaking"]
@@ -311,6 +311,7 @@ async def ws_serve(websocket, path):
                         try:
                             await async_asr(websocket, audio_in)
                         except Exception as e:
+                            raise
                             logger.error(f"error in asr offline: error: {e}")
                     frames_asr = []
                     speech_start = False
@@ -323,14 +324,8 @@ async def ws_serve(websocket, path):
                     else:
                         frames = frames[-20:]
 
-    except websockets.ConnectionClosed:
-        logger.error(f"ConnectionClosed...{websocket_users}")
-        await ws_reset(websocket)
-        websocket_users.remove(websocket)
-    except websockets.InvalidState:
-        logger.error("InvalidState...")
-    except Exception as e:
-        logger.error(f"Exception: {e}")
+    except:
+        raise
 
 
 async def async_vad(websocket, audio_in):
@@ -385,25 +380,30 @@ def cosine_similarity(emb1: torch.Tensor, emb2: torch.Tensor) -> float:
 
 def process_audio_stream(audio_stream: np.ndarray, target_embed: torch.Tensor) -> torch.Tensor:
     """处理单个音频块并返回静音过滤后的结果"""
+    buffer = torch.zeros(1, 0)  # 音频缓冲池
+    # 转换为Tensor并缓冲
+    chunk_tensor = torch.from_numpy(audio_stream).float().unsqueeze(0)
+    buffer = torch.cat([buffer, chunk_tensor], dim=1)
     output = np.zeros_like(audio_stream)
-    frame_size = int(SPEAKER_VERIFICATION_CHUNK_DURATION * DEFAULT_SAMPLE_RATE)
+    chunk_size = int(SPEAKER_VERIFICATION_CHUNK_DURATION * DEFAULT_SAMPLE_RATE)
     has_similarity = False
-    for i in range(0, len(audio_stream), frame_size):
-        frame = audio_stream[i:i + frame_size]
-        if len(frame) < frame_size:  # 丢弃不足一帧的数据
-            continue
+    while buffer.shape[1] >= chunk_size:
+        # 提取待处理段
+        segment = buffer[:, :chunk_size]
 
-        # 转换为Tensor并提取声纹
-        frame_tensor = torch.from_numpy(frame).float().unsqueeze(0)
-        with torch.no_grad():
-            emb = spkrec.encode_batch(frame_tensor)
-            sim = torch.cosine_similarity(target_embed, emb, dim=-1).item()
-            logger.info(f"sim ----- {sim}")
+        # 声纹比对
+        seg_embed = extract_embedding(segment)
+        sim = cosine_similarity(target_embed, seg_embed)
 
-        # 保留高相似度片段
+        logger.info(f"process_audio_stream sim:  {sim}")
+
+        # 静音替换逻辑
         if sim >= SPEAKER_VERIFICATION_THRESHOLD:
-            output[i:i + frame_size] = frame
+            output[:chunk_size] = segment
             has_similarity = True
+
+        # 滑动窗口（50%重叠）
+        buffer = buffer[:, chunk_size // 2:]
 
     return output, has_similarity
 
