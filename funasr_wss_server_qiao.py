@@ -21,6 +21,9 @@ SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.2
 
 SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURATION", 2.0)
 
+OFFLINE_CUT_END_SECONDS = os.getenv("OFFLINE_CUT_END_SECONDS", 1)
+
+
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
 DEFAULT_SAMPLE_RATE = 16000
@@ -271,6 +274,8 @@ async def ws_serve(websocket, path):
                     duration_ms = len(message) // 32
                     websocket.vad_pre_idx += duration_ms
 
+                    # print(f"duration_ms: {duration_ms}, message type:{type(message)}, websocket.vad_pre_idx: {websocket.vad_pre_idx}")
+
                     # asr online
                     frames_asr_online.append(message)
                     websocket.status_dict_asr_online["is_final"] = speech_end_i != -1
@@ -304,9 +309,12 @@ async def ws_serve(websocket, path):
                         frames_pre = frames[-beg_bias:]
                         frames_asr = []
                         frames_asr.extend(frames_pre)
+                        # print(f" speech_start_i: {speech_start_i}, speech_end_i: {speech_end_i}, beg_bias: {beg_bias}, frames len: {len(frames)}, frames_pre len: {len(frames_pre)}, frames_asr len: {len(frames_asr)}")
                 # asr punc offline
                 if speech_end_i != -1 or not websocket.is_speaking:
                     if websocket.mode == "2pass" or websocket.mode == "offline":
+                        if speech_end_i == -1 and not websocket.is_speaking:
+                            frames_asr = frames_asr[:-18]
                         audio_in = b"".join(frames_asr)
                         try:
                             await async_asr(websocket, audio_in)
@@ -408,6 +416,20 @@ def process_audio_stream(audio_stream: np.ndarray, target_embed: torch.Tensor) -
     return output, has_similarity
 
 
+def cut_and_sim_audio(audio_np: np.ndarray, target_embed: torch.Tensor) -> torch.Tensor:
+    """截断最后指定秒数的音频，并比对相识度"""
+
+    segment = torch.from_numpy(audio_np).float()
+    seg_embed = extract_embedding(segment)
+    sim = cosine_similarity(target_embed, seg_embed)
+
+    logger.info(f"cut_and_sim_audio sim:  {sim}")
+    has_similarity = False
+    if sim >= SPEAKER_VERIFICATION_THRESHOLD:
+        has_similarity = True
+    return segment, has_similarity
+
+
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         start_time = time.time()
@@ -416,11 +438,11 @@ async def async_asr(websocket, audio_in):
         text = rec_result["text"]
         if IS_SPEAKER_VERIFICATION:
             if websocket.speaker_verification_activate:
-                chunk_np = np.frombuffer(audio_in, dtype=np.int16).astype(np.float32) / 32768.0
-                processed, has_similarity = process_audio_stream(chunk_np, websocket.speaker_verification_sample_emb)
+                chunk_np = np.frombuffer(audio_in, dtype=np.int16)
+                processed, has_similarity = cut_and_sim_audio(chunk_np, websocket.speaker_verification_sample_emb)
                 if has_similarity:
                     rec_result = model_asr.generate(input=processed, **websocket.status_dict_asr)[0]
-                    logger.info(f"offline_asr process_audio_stream   rec_result: {rec_result}")
+                    logger.info(f"offline_asr cut_and_sim_audio   rec_result: {rec_result}")
                 else:
                     mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
                     message = json.dumps(
