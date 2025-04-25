@@ -23,6 +23,7 @@ SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURA
 
 OFFLINE_CUT_END_SECONDS = os.getenv("OFFLINE_CUT_END_SECONDS", 1)
 
+OFFLINE_CUT_END_MESSAGES = os.getenv("OFFLINE_CUT_END_MESSAGES", 18)
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
@@ -258,6 +259,15 @@ async def ws_serve(websocket, path):
                     websocket.status_dict_asr["hotword"] = messagejson["hotwords"]
                 if "mode" in messagejson:
                     websocket.mode = messagejson["mode"]
+                if "is_speaker_verification" in messagejson:
+                    websocket.is_speaker_verification = messagejson["is_speaker_verification"]
+                else:
+                    websocket.is_speaker_verification = False
+
+                if "activate_words" in messagejson:
+                    websocket.activate_words = messagejson["activate_words"]
+                else:
+                    websocket.activate_words = HXQ_ROLE_KEYWORDS
 
             websocket.status_dict_vad["chunk_size"] = int(
                 websocket.status_dict_asr_online["chunk_size"][1]
@@ -313,8 +323,8 @@ async def ws_serve(websocket, path):
                 # asr punc offline
                 if speech_end_i != -1 or not websocket.is_speaking:
                     if websocket.mode == "2pass" or websocket.mode == "offline":
-                        if speech_end_i == -1 and not websocket.is_speaking:
-                            frames_asr = frames_asr[:-18]
+                        if websocket.speaker_verification_activate and speech_end_i == -1 and not websocket.is_speaking:
+                            frames_asr = frames_asr[:-OFFLINE_CUT_END_MESSAGES]
                         audio_in = b"".join(frames_asr)
                         try:
                             await async_asr(websocket, audio_in)
@@ -438,16 +448,13 @@ def cut_and_sim_audio(audio_np: np.ndarray, target_embed: torch.Tensor) -> torch
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         start_time = time.time()
-        rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
-        logger.info(f"offline_asr rec_result:  {rec_result}")
-        text = rec_result["text"]
-        if IS_SPEAKER_VERIFICATION:
+        if websocket.is_speaker_verification:
             if websocket.speaker_verification_activate:
                 chunk_np = np.frombuffer(audio_in, dtype=np.int16)
                 processed, has_similarity = cut_and_sim_audio(chunk_np, websocket.speaker_verification_sample_emb)
                 if has_similarity:
                     rec_result = model_asr.generate(input=processed, **websocket.status_dict_asr)[0]
-                    logger.info(f"offline_asr cut_and_sim_audio   rec_result: {rec_result}")
+                    # logger.info(f"offline_asr cut_and_sim_audio   rec_result: {rec_result}")
                 else:
                     mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
                     message = json.dumps(
@@ -461,13 +468,18 @@ async def async_asr(websocket, audio_in):
                     await websocket.send(message)
                     return
             else:
-                if text and any(keyword in text for keyword in HXQ_ROLE_KEYWORDS):
+                rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
+                text = rec_result["text"]
+                if text and any(keyword in text for keyword in websocket.activate_words):
                     signal = bytes_to_tensor(audio_in)
                     audio_emb = spkrec.encode_batch(signal).squeeze(0)
                     logger.info(f"keyword audio_emb")
                     websocket.speaker_verification_sample_emb = audio_emb
                     websocket.speaker_verification_activate = True
+        else:
+            rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
 
+        logger.info(f"offline_asr rec_result:  {rec_result}")
         end_time = time.time()
         execution_time = end_time - start_time
         # logger.info(f"async_asr generate speaker_verify execute time：{execution_time}秒")
