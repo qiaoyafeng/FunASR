@@ -319,7 +319,6 @@ async def ws_serve(websocket, path):
                         try:
                             await async_asr(websocket, audio_in)
                         except Exception as e:
-                            raise
                             logger.error(f"error in asr offline: error: {e}")
                     frames_asr = []
                     speech_start = False
@@ -332,8 +331,14 @@ async def ws_serve(websocket, path):
                     else:
                         frames = frames[-20:]
 
-    except:
-        raise
+    except websockets.ConnectionClosed:
+        logger.error(f"ConnectionClosed...{websocket_users}")
+        await ws_reset(websocket)
+        websocket_users.remove(websocket)
+    except websockets.InvalidState:
+        logger.error("InvalidState...")
+    except Exception as e:
+        logger.error(f"Exception: {e}")
 
 
 async def async_vad(websocket, audio_in):
