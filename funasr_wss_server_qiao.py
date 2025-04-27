@@ -29,6 +29,7 @@ HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 
 DEFAULT_SAMPLE_RATE = 16000
 
+SPEAKER_VERIFICATION_VOLUME_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_VOLUME_THRESHOLD", 50)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -188,6 +189,25 @@ def bytes_to_tensor(pcm_bytes: bytes, bit_depth: int = 16) -> torch.Tensor:
     return tensor.unsqueeze(0)  # 添加通道维度 (1, N)
 
 
+def calculate_volume(audio_bytes, min_db=-60, max_db=0):
+    # 将PCM数据转换为numpy数组并归一化到[-1, 1]
+    audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+
+    # 计算RMS(均方根)
+    rms = np.sqrt(np.mean(audio ** 2))
+
+    # 计算分贝值(避免log(0))
+    db = 20 * np.log10(max(rms, 1e-6))  # 1e-6对应-120dB
+
+    # 裁剪到[min_db, max_db]范围
+    clipped_db = np.clip(db, min_db, max_db)
+
+    # 线性映射到0-100并四舍五入为整数
+    volume = int(np.round(((clipped_db - min_db) / (max_db - min_db)) * 100))
+
+    return volume
+
+
 async def ws_reset(websocket):
     logger.info(f"ws reset now, total num is len(websocket_users)")
 
@@ -263,6 +283,10 @@ async def ws_serve(websocket, path):
                     websocket.is_speaker_verification = messagejson["is_speaker_verification"]
                 else:
                     websocket.is_speaker_verification = False
+                if "volume_threshold" in messagejson:
+                    websocket.volume_threshold = messagejson["volume_threshold"]
+                else:
+                    websocket.volume_threshold = SPEAKER_VERIFICATION_VOLUME_THRESHOLD
 
                 if "activate_words" in messagejson:
                     websocket.activate_words = messagejson["activate_words"]
@@ -448,6 +472,8 @@ def cut_and_sim_audio(audio_np: np.ndarray, target_embed: torch.Tensor) -> torch
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         start_time = time.time()
+        volume = calculate_volume(audio_in)
+        logger.info(f"volume: {volume}")
         if websocket.is_speaker_verification:
             if websocket.speaker_verification_activate:
                 chunk_np = np.frombuffer(audio_in, dtype=np.int16)
@@ -463,6 +489,8 @@ async def async_asr(websocket, audio_in):
                             "text": "",
                             "wav_name": websocket.wav_name,
                             "is_final": websocket.is_speaking,
+                            "volume": volume,
+                            "volume_threshold": websocket.volume_threshold
                         }
                     )
                     await websocket.send(message)
@@ -470,7 +498,7 @@ async def async_asr(websocket, audio_in):
             else:
                 rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
                 text = rec_result["text"]
-                if text and any(keyword in text for keyword in websocket.activate_words):
+                if volume >= websocket.volume_threshold and text and any(keyword in text for keyword in websocket.activate_words):
                     signal = bytes_to_tensor(audio_in)
                     audio_emb = spkrec.encode_batch(signal).squeeze(0)
                     logger.info(f"keyword audio_emb")
@@ -498,6 +526,8 @@ async def async_asr(websocket, audio_in):
                     "text": rec_result["text"],
                     "wav_name": websocket.wav_name,
                     "is_final": websocket.is_speaking,
+                    "volume": volume,
+                    "volume_threshold": websocket.volume_threshold
                 }
             )
             await websocket.send(message)
@@ -510,6 +540,8 @@ async def async_asr(websocket, audio_in):
                 "text": "",
                 "wav_name": websocket.wav_name,
                 "is_final": websocket.is_speaking,
+                "volume": 0,
+                "volume_threshold": websocket.volume_threshold
             }
         )
         await websocket.send(message)
