@@ -31,7 +31,7 @@ HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
 DEFAULT_SAMPLE_RATE = 16000
 
 
-SPEAKER_VERIFICATION_VOLUME_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_VOLUME_THRESHOLD", 50)
+SPEAKER_VERIFICATION_VOLUME_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_VOLUME_THRESHOLD", 65)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
