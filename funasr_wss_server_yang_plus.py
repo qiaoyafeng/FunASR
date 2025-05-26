@@ -352,7 +352,7 @@ async def ws_serve(websocket, path):
                 if speech_end_i != -1 or not websocket.is_speaking:
                     # print("vad end point")
                     if websocket.mode == "2pass" or websocket.mode == "offline":
-                        if websocket.speaker_verification_activate and speech_end_i == -1 and not websocket.is_speaking:
+                        if websocket.is_speaker_verification and websocket.speaker_verification_activate and speech_end_i == -1 and not websocket.is_speaking:
                             frames_asr = frames_asr[:-OFFLINE_CUT_END_MESSAGES]
                         audio_in = b"".join(frames_asr)
                         try:
@@ -476,7 +476,7 @@ def cut_and_sim_audio(audio_np: np.ndarray, target_embed: torch.Tensor) -> torch
 async def async_asr(websocket, audio_in):
     if len(audio_in) > 0:
         volume = calculate_volume(audio_in)
-        logger.info(f"volume: {volume}")
+        logger.info(f"async_asr volume: {volume}, is_speaker_verification:{websocket.is_speaker_verification}, speaker_verification_activate: {websocket.speaker_verification_activate}")
         if websocket.is_speaker_verification:
             if websocket.speaker_verification_activate:
                 chunk_np = np.frombuffer(audio_in, dtype=np.int16)
