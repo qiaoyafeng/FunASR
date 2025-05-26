@@ -519,20 +519,19 @@ async def async_asr(websocket, audio_in):
                 input=rec_result["text"], **websocket.status_dict_punc
             )[0]
             # logger.info(f"offline, after punc {rec_result}")
-        if len(rec_result["text"]) > 0:
-            mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
+        mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
 
-            message = json.dumps(
-                {
-                    "mode": mode,
-                    "text": rec_result["text"],
-                    "wav_name": websocket.wav_name,
-                    "is_final": websocket.is_speaking,
-                    "volume": volume,
-                    "volume_threshold": websocket.volume_threshold
-                }
-            )
-            await websocket.send(message)
+        message = json.dumps(
+            {
+                "mode": mode,
+                "text": rec_result["text"],
+                "wav_name": websocket.wav_name,
+                "is_final": websocket.is_speaking,
+                "volume": volume,
+                "volume_threshold": websocket.volume_threshold
+            }
+        )
+        await websocket.send(message)
 
     else:
         mode = "2pass-offline" if "2pass" in websocket.mode else websocket.mode
