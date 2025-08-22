@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import os
+import re
 import ssl
 import time
 import uuid
@@ -27,6 +28,7 @@ OFFLINE_CUT_END_MESSAGES = os.getenv("OFFLINE_CUT_END_MESSAGES", 18)
 
 
 HXQ_ROLE_KEYWORDS = ["心心", "欣欣", "星星"]
+HXQ_ROLE_CHAR = "心"
 
 DEFAULT_SAMPLE_RATE = 16000
 
@@ -311,6 +313,11 @@ async def ws_serve(websocket, path):
                 else:
                     websocket.activate_words = HXQ_ROLE_KEYWORDS
 
+                if "activate_chars" in messagejson:
+                    websocket.activate_chars = messagejson["activate_chars"]
+                else:
+                    websocket.activate_chars = []
+
             websocket.status_dict_vad["chunk_size"] = int(
                 websocket.status_dict_asr_online["chunk_size_arr"][1] * 60 / websocket.chunk_interval
             )
@@ -501,12 +508,15 @@ async def async_asr(websocket, audio_in):
             else:
                 rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
                 text = rec_result["text"]
-                if volume >= websocket.volume_threshold and text and any(keyword in text for keyword in websocket.activate_words):
-                    signal = bytes_to_tensor(audio_in)
-                    audio_emb = spkrec.encode_batch(signal).squeeze(0)
-                    logger.info(f"keyword audio_emb")
-                    websocket.speaker_verification_sample_emb = audio_emb
-                    websocket.speaker_verification_activate = True
+                if volume >= websocket.volume_threshold and text:
+                    pattern = f"[{''.join(websocket.activate_chars)}]"
+                    update_text = re.sub(pattern, HXQ_ROLE_CHAR, text)
+                    if any(keyword in text for keyword in websocket.activate_words) or any(keyword in update_text for keyword in websocket.activate_words):
+                        signal = bytes_to_tensor(audio_in)
+                        audio_emb = spkrec.encode_batch(signal).squeeze(0)
+                        logger.info(f"keyword audio_emb")
+                        websocket.speaker_verification_sample_emb = audio_emb
+                        websocket.speaker_verification_activate = True
         else:
             rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
 
