@@ -509,8 +509,11 @@ async def async_asr(websocket, audio_in):
                 rec_result = model_asr.generate(input=audio_in, **websocket.status_dict_asr)[0]
                 text = rec_result["text"]
                 if volume >= websocket.volume_threshold and text:
-                    pattern = f"[{''.join(websocket.activate_chars)}]"
-                    update_text = re.sub(pattern, HXQ_ROLE_CHAR, text)
+                    if websocket.activate_chars:
+                        pattern = f"[{''.join(websocket.activate_chars)}]"
+                        update_text = re.sub(pattern, HXQ_ROLE_CHAR, text)
+                    else:
+                        update_text = text
                     if any(keyword in text for keyword in websocket.activate_words) or any(keyword in update_text for keyword in websocket.activate_words):
                         signal = bytes_to_tensor(audio_in)
                         audio_emb = spkrec.encode_batch(signal).squeeze(0)
