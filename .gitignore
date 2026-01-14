@@ -28,3 +28,4 @@ modelscope_models
 examples/aishell/llm_asr_nar/*
 *egg-info
 env/
+pretrained_models/
