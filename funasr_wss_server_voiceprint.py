@@ -21,7 +21,7 @@ from speechbrain.pretrained import SpeakerRecognition
 
 IS_SPEAKER_VERIFICATION = os.getenv("IS_SPEAKER_VERIFICATION", True)
 
-SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.2)
+SPEAKER_VERIFICATION_THRESHOLD = os.getenv("SPEAKER_VERIFICATION_THRESHOLD", 0.4)
 
 SPEAKER_VERIFICATION_CHUNK_DURATION = os.getenv("SPEAKER_VERIFICATION_CHUNK_DURATION", 2.0)
 
@@ -310,6 +310,10 @@ async def ws_serve(websocket, path):
                     websocket.is_speaker_verification = messagejson["is_speaker_verification"]
                 else:
                     websocket.is_speaker_verification = False
+                if "speaker_ids" in messagejson:
+                    websocket.speaker_ids = messagejson["speaker_ids"].split(",")
+                else:
+                    websocket.speaker_ids = voiceprint_speaker_ids
 
                 if "volume_threshold" in messagejson:
                     websocket.volume_threshold = messagejson["volume_threshold"]
@@ -502,7 +506,7 @@ async def identify_speaker(websocket, audio_data: bytes):
             
             # 准备multipart/form-data数据
             data = aiohttp.FormData()
-            data.add_field('speaker_ids', ','.join(voiceprint_speaker_ids))
+            data.add_field('speaker_ids', ','.join(websocket.speaker_ids or voiceprint_speaker_ids))
             data.add_field('file', audio_data, filename='audio.wav', content_type='audio/wav')
             
             timeout = aiohttp.ClientTimeout(total=10)
@@ -644,9 +648,16 @@ async def async_asr_online(websocket, audio_in):
         # print(websocket.status_dict_asr_online.get("is_final", False))
         # logger.info(f"online dic {websocket.status_dict_asr_online['hotword']} ")
         websocket.status_dict_asr_online["chunk_size"] = websocket.status_dict_asr_online["chunk_size_arr"]
-        rec_result = model_asr_streaming.generate(
-            input=audio_in, **websocket.status_dict_asr_online
-        )
+        if websocket.is_speaker_verification:
+            is_verification = await identify_speaker(websocket, pcm_to_wav(audio_in))
+            if is_verification:
+                rec_result = model_asr_streaming.generate(input=audio_in, **websocket.status_dict_asr_online)
+            else:
+                return
+        else:
+            rec_result = model_asr_streaming.generate(
+                input=audio_in, **websocket.status_dict_asr_online
+            )
         if rec_result[0]['text'] != '':
             logger.info(f"online, {rec_result}")
         rec_result = rec_result[0]
