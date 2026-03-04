@@ -135,7 +135,8 @@ else:
         device=args.device,
         disable_pbar=True,
         disable_log=True,
-        ban_emo_unk=False
+        ban_emo_unk=False,
+        disable_update=True
     )
 
 # asr
